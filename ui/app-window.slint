@@ -1,0 +1,60 @@
+import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    height: 720px;
+    width: 1280px;
+
+
+    property <string> passfield: "";
+    callback write_to_db(string); // Define a signal that carries a string
+    VerticalLayout {
+        alignment: start;
+        padding: 100px;
+        Text {
+            text: "Rust Password Manager";
+            font-size: 36px;
+            color: Colors.darkorange;
+            horizontal-alignment: center;
+        }
+    }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 50px;
+        padding: 100px;
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: 25px;
+
+            Rectangle {
+                min-width: root.width / 2;
+                height: root.height / 12;
+                LineEdit {
+
+                    width: parent.width;
+                    height: parent.height;
+                    text <=> root.passfield;
+                    input-type: InputType.password;
+                    placeholder-text: "password";
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: end;
+            HorizontalLayout {
+                alignment: center;
+                Button {
+                    width: root.width / 10;
+                    height: root.height / 20;
+                    primary: true;
+                    text: "Authenticate";
+                    clicked => {
+                        write_to_db(root.passfield);
+                    }
+                }
+            }
+        }
+    }
+}
