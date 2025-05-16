@@ -40,6 +40,9 @@ impl DatabaseManager {
     fn insert_initial_salt(&self) -> Result<()> {
         match  self.get_salt() {
             Ok(salt) => {
+               Ok(())
+            },
+            Err(e) => {
                 let salt = generate_salt();
 
                 self.connection.execute(
@@ -48,13 +51,9 @@ impl DatabaseManager {
                 )?;
 
                 println!("Inserted master salt... {:?}", salt);
-            },
-            Err(e) => {
-                return Err(e);
+                Ok(())
             }
         }
-        
-        Ok(())
     }
 
     pub fn get_salt(&self) -> Result<Vec<u8>> {
