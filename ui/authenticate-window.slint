@@ -1,12 +1,12 @@
 import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
 
-export component AppWindow inherits Window {
+export component AuthenticateWindow inherits Window {
     height: 720px;
     width: 1280px;
 
 
     property <string> passfield: "";
-    callback write_to_db(string); // Define a signal that carries a string
+    callback authenticate(string); // Define a signal that carries a string
     VerticalLayout {
         alignment: start;
         padding: 100px;
@@ -51,7 +51,7 @@ export component AppWindow inherits Window {
                     primary: true;
                     text: "Authenticate";
                     clicked => {
-                        write_to_db(root.passfield);
+                        authenticate(root.passfield);
                     }
                 }
             }
