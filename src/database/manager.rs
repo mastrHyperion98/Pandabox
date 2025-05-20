@@ -1,14 +1,6 @@
-use argon2::password_hash::SaltString;
 use rusqlite::{Connection, Error, Result};
-use rand::RngCore;
 
-const SALT_LENGTH: usize = 32; // Recommended salt length (in bytes)
 
-pub fn generate_salt() -> Vec<u8> {
-    let mut salt = vec![0u8; SALT_LENGTH];
-    rand::rng().fill_bytes(&mut salt);
-    salt
-}
 
 pub struct DatabaseManager {
     connection: Connection
@@ -20,50 +12,45 @@ impl DatabaseManager {
         Ok(DatabaseManager {connection})
     }
 
-    pub fn create_master_table(&self) -> Result<()>  {
+    pub fn create_master_table(&self, salt: &Vec<u8>, encrypted_master: &Vec<u8>, nonce: &Vec<u8>) -> Result<()>  {
         println!("Creating master table...");
         self.connection.execute("CREATE TABLE IF NOT EXISTS master_table (\
         id INTEGER PRIMARY KEY AUTOINCREMENT,\
+        encrypted_master_key BLOB NOT NULL,\
+        nonce BLOB NOT NULL,\
         salt BLOB NOT NULL);", []
         )?;
 
         println!("Created master table...");
 
-        match self.insert_initial_salt() {
-            Ok(_) => println!("Insertion was successful from main!"),
+        match self.insert_master_table(salt, encrypted_master, nonce) {
+            Ok(_) => println!("Insertion was successful"),
             Err(e) => eprintln!("Error during insertion: {}", e),
         }
 
         Ok(())
     }
 
-    fn insert_initial_salt(&self) -> Result<()> {
-        match  self.get_salt() {
-            Ok(salt) => {
-               Ok(())
-            },
-            Err(e) => {
-                let salt = generate_salt();
-
-                self.connection.execute(
-                    "INSERT INTO master_table (salt) VALUES (?1);",
-                    [&salt],
-                )?;
-
-                println!("Inserted master salt... {:?}", salt);
-                Ok(())
-            }
-        }
+    fn insert_master_table(&self, salt: &Vec<u8>, encrypted_master: &Vec<u8>, nonce: &Vec<u8>) -> Result<()> {
+        self.connection.execute(
+            "INSERT INTO master_table (encrypted_master_key, nonce, salt) VALUES (?, ?, ?)",
+            [encrypted_master, nonce, salt],
+        )?;
+        
+        Ok(())
     }
 
-    pub fn get_salt(&self) -> Result<Vec<u8>> {
-       let mut stmt = self.connection.prepare("SELECT salt FROM master_table LIMIT 1")?;
-        let mut rows =  stmt.query([])?;
-        if let Some(salt) = rows.next()? {
-            let salt: Vec<u8> = salt.get(0)?;
-            Ok(salt)
-        }else {
-            Err(Error::QueryReturnedNoRows)
+    pub fn get_master_record(&self) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), Error> {
+        let mut stmt = self.connection.prepare("SELECT encrypted_master_key, nonce, salt FROM master_table LIMIT 1")?;
+        let mut rows = stmt.query([])?;
+
+        if let Some(row) = rows.next()? {
+            let encrypted_master_key: Vec<u8> = row.get(0)?;
+            let nonce: Vec<u8> = row.get(1)?;
+            let salt: Vec<u8> = row.get(2)?;
+            Ok((encrypted_master_key, nonce, salt))
+        } else {
+            Err(Error::QueryReturnedNoRows) // Assuming you have a custom Error::QueryReturnedNoRows
         }
     }
 }

@@ -1,16 +1,14 @@
 // Prevent console window in addition to Slint window in Windows release builds when, e.g., starting the app via file manager. Ignored on other platforms.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-
-
 use dirs::home_dir;
-use std::path::{Display, PathBuf};
+use std::path::{PathBuf};
 use std::error::Error;
 use std::fs;
 use base64::Engine;
-use slint::SharedString;
-
-
+use slint::{PlatformError, SharedString, Window};
+use crate::encrypt::cryptography::CryptEngine;
+use chacha20poly1305::{ Error as ChaChaError};
 
 mod database;
 mod encrypt;
@@ -20,23 +18,66 @@ slint::include_modules!();
 const APP_NAME: &str = "RustPasswordManager";
 
 // Assume you have a function to write to your database
-fn on_authenticate(data: SharedString) -> Result<(), Box<dyn Error>> {
-    println!("Simulating writing '{}' to the database...", data);
+fn on_authenticate(data: SharedString, path: String, window: &Window) -> Result<(), Box<dyn Error>> {
+    // Now we create the database
+    let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
+    let (key, nonce, salt) = manager.get_master_record()?;
+
+    let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
+    match engine.decrypt_master_key(nonce.as_slice(), key.as_ref()) {
+        Ok(_) => {
+            println!("Master key successfully decrypted");
+            window.hide().unwrap();
+        }
+        Err(_) => {
+            println!("Failed to decrypt master key");
+        }
+    };
+
     // In a real application, you would have your database interaction logic here
     Ok(())
 }
 
 
-fn create_db(data: SharedString, path: String) -> Result<(), Box<dyn Error>> {
-    //let Some(db_path) = get_user_db_path_cross_platform(db_file) else { todo!() };
-    //print!("{}", db_path.to_str().unwrap());
+fn create_db(data: SharedString, path: String, window: &Window) -> Result<(), ChaChaError> {
+    // Before creating the database perhaps we should create the salt, nonce and encyrption key
+    let salt = CryptEngine::generate_salt() ;
+    let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
+    let master_key = CryptEngine::generate_master_key();
+    let (nonce, ciphertext) = engine.encrypt_master_key(master_key.as_ref())?;
+
+    // Now we create the database
     let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
-    println!("Creating DB with root cipher '{}' to the database...", data);
-    manager.create_master_table();
-    let salt = manager.get_salt();
-    println!("Retrieved master salt... {:?}", salt);
-    // In a real application, you would have your database interaction logic here
-    encrypt::cryptography::CryptEngine::new(data.as_str(), &salt.unwrap()).expect("Encrypting data failed");
+
+    println!("Creating DB");
+    match manager.create_master_table(salt.as_ref(), ciphertext.as_ref(),  nonce.as_ref()) {
+        Ok(_) => {
+            println!("Created Master Table");
+            match AuthenticateWindow::new() {
+                Ok(ui) => {
+                    let weak = ui.as_weak();
+                    ui.on_authenticate({
+                        move |text_to_write| {
+                            match on_authenticate(text_to_write, path.clone(), weak.unwrap().window()) {
+                                Ok(_) => println!("Authentication Success"),
+                                Err(e) => eprintln!("Authentication Failed: {}", e),
+                            }
+                        }
+                    });
+
+                    match ui.run() { _ =>
+                        {
+                            window.hide();
+                        }
+                    };
+                }
+                Err(_) => {}
+            };
+        }
+        Err(_) => {
+            println!("Failed to create Master Table");
+        }
+    };
     Ok(())
 }
 
@@ -80,31 +121,46 @@ fn check_db_exist() -> (bool, String) {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let (db_exist, path) = check_db_exist();
+    run(db_exist, path)?;
+    Ok(())
+}
+
+fn run(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
+    get_initial_ui(db_exist, path)?;
+    Ok(())
+}
+
+//TODO: Have this return the ui and have it execute ui.run in the run function of this main program
+fn get_initial_ui(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
     if db_exist {
         let ui = AuthenticateWindow::new()?;
+        let weak = ui.as_weak();
+
         ui.on_authenticate({
             move |text_to_write| {
-                match on_authenticate(text_to_write) {
-                    Ok(_) => println!("Data written successfully."),
-                    Err(e) => eprintln!("Error writing to database: {}", e),
+                match on_authenticate(text_to_write, path.clone(), weak.unwrap().window()) {
+                    Ok(_) => println!("Authentication Success"),
+                    Err(e) => eprintln!("Authentication Failed: {}", e),
                 }
             }
         });
 
         ui.run()?;
-    } 
-    else {
+        Ok(())
+    } else {
         let ui = CreateDbWindow::new()?;
+        let weak = ui.as_weak();
+
         ui.on_createdb({
             move |text_to_write| {
-                match create_db(text_to_write, path.clone()) {
+                match create_db(text_to_write, path.clone(), weak.unwrap().window()) {
                     Ok(_) => println!("DB Created successfully."),
                     Err(e) => eprintln!("Error creating database: {}", e),
                 }
             }
         });
         ui.run()?;
+        Ok(())
     }
-    Ok(())
 }
 
