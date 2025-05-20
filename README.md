@@ -1,12 +1,14 @@
-# Slint Rust Template
+# About
 
-A template for a Rust application that's using [Slint](https://slint.rs/) for the user interface.
+Passlock is a Java Password manager I wrote while in Uni. The software has significant short comings and this project is an attempt to learn Rust by overhauling Passlock. The primary components with revolve around the argo2, chacha20poly1305 and Slint frameworks. 
+
+As per the original project a local sqlite 3 database is used to stored the encrypted data. 
 
 ## About
 
-This template helps you get started developing a Rust application with Slint as toolkit
-for the user interface. It demonstrates the integration between the `.slint` UI markup and
-Rust code, how to react to callbacks, get and set properties, and use basic widgets.
+The core principle idea of this project is to try and offer a safe, robust and performant local client for storing a large variety of text based information. The initial goal is to enable users to store passwords for various services.
+However, I hope to be able to expand that to memo's and other important information that people may want to store secretely and safely behind encyrption. The ability to leverage cloud storage for synchronization between devices is also
+a neat feature that would be fantastic to have in this version. 
 
 ## Usage
 
@@ -15,8 +17,8 @@ Rust code, how to react to callbacks, get and set properties, and use basic widg
 2. Download and extract the [ZIP archive of this repository](https://github.com/slint-ui/slint-rust-template/archive/refs/heads/main.zip).
 3. Rename the extracted directory and change into it:
     ```
-    mv slint-rust-template-main my-project
-    cd my-project    
+    mv RustPassLock
+    cd RustPassLock  
     ```
 4. Build with `cargo`:
     ```
@@ -31,8 +33,3 @@ We recommend using an IDE for development, along with our [LSP-based IDE integra
 
 ## Next Steps
 
-We hope that this template helps you get started, and that you enjoy exploring making user interfaces with Slint. To learn more
-about the Slint APIs and the `.slint` markup language, check out our [online documentation](https://slint.dev/docs).
-
-Don't forget to edit this readme to replace it by yours, and edit the `name =` field in `Cargo.toml` to match the name of your
-project.
