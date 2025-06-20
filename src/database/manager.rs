@@ -1,24 +1,29 @@
 use rusqlite::{Connection, Error, Result};
 
-
-
 pub struct DatabaseManager {
-    connection: Connection
+    connection: Connection,
 }
 
 impl DatabaseManager {
-    pub fn new(database_path: &str) ->  Result<Self> {
+    pub fn new(database_path: &str) -> Result<Self> {
         let connection = Connection::open(database_path).unwrap();
-        Ok(DatabaseManager {connection})
+        Ok(DatabaseManager { connection })
     }
 
-    pub fn create_master_table(&self, salt: &Vec<u8>, encrypted_master: &Vec<u8>, nonce: &Vec<u8>) -> Result<()>  {
+    pub fn create_master_table(
+        &self,
+        salt: &Vec<u8>,
+        encrypted_master: &Vec<u8>,
+        nonce: &Vec<u8>,
+    ) -> Result<()> {
         println!("Creating master table...");
-        self.connection.execute("CREATE TABLE IF NOT EXISTS master_table (\
+        self.connection.execute(
+            "CREATE TABLE IF NOT EXISTS master_table (\
         id INTEGER PRIMARY KEY AUTOINCREMENT,\
         encrypted_master_key BLOB NOT NULL,\
         nonce BLOB NOT NULL,\
-        salt BLOB NOT NULL);", []
+        salt BLOB NOT NULL);",
+            [],
         )?;
 
         println!("Created master table...");
@@ -31,17 +36,24 @@ impl DatabaseManager {
         Ok(())
     }
 
-    fn insert_master_table(&self, salt: &Vec<u8>, encrypted_master: &Vec<u8>, nonce: &Vec<u8>) -> Result<()> {
+    fn insert_master_table(
+        &self,
+        salt: &Vec<u8>,
+        encrypted_master: &Vec<u8>,
+        nonce: &Vec<u8>,
+    ) -> Result<()> {
         self.connection.execute(
             "INSERT INTO master_table (encrypted_master_key, nonce, salt) VALUES (?, ?, ?)",
             [encrypted_master, nonce, salt],
         )?;
-        
+
         Ok(())
     }
 
     pub fn get_master_record(&self) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), Error> {
-        let mut stmt = self.connection.prepare("SELECT encrypted_master_key, nonce, salt FROM master_table LIMIT 1")?;
+        let mut stmt = self
+            .connection
+            .prepare("SELECT encrypted_master_key, nonce, salt FROM master_table LIMIT 1")?;
         let mut rows = stmt.query([])?;
 
         if let Some(row) = rows.next()? {

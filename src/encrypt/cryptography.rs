@@ -1,17 +1,16 @@
-use rand_core::RngCore;
-use argon2::{Argon2};
 use argon2::password_hash::{rand_core::OsRng, Error as PasswordHashError};
-use argon2::{ParamsBuilder};
-use chacha20poly1305::{Key, Nonce, ChaCha20Poly1305, AeadCore, Error as ChaChaError, KeyInit};
-use chacha20poly1305::aead::{Aead, };
 use argon2::Algorithm::Argon2id;
+use argon2::Argon2;
+use argon2::ParamsBuilder;
 use chacha20poly1305::aead::generic_array::GenericArray;
+use chacha20poly1305::aead::Aead;
 use chacha20poly1305::consts::U12;
+use chacha20poly1305::{AeadCore, ChaCha20Poly1305, Error as ChaChaError, Key, KeyInit, Nonce};
+use rand_core::RngCore;
 
 const SALT_LENGTH: usize = 32;
 
 pub struct CryptEngine {
-    
     key: Vec<u8>, // Store the Argon2 output (not the ChaCha20 key directly)
 }
 
@@ -19,12 +18,11 @@ impl CryptEngine {
     pub fn new(password: &str, salt: &[u8]) -> Result<Self, PasswordHashError> {
         let derived_key = CryptEngine::derive_key(password, salt);
 
-
         Ok(CryptEngine {
             key: derived_key, // Store the whole PasswordHashString
         })
     }
-    
+
     //Derive key.  This is a separate function so that it can be called after password verification
     fn derive_key(password: &str, salt: &[u8]) -> Vec<u8> {
         let params = ParamsBuilder::new()
@@ -38,7 +36,9 @@ impl CryptEngine {
         let derived_key_length = params.output_len(); // Get the output length
         let mut derived_key = vec![0u8; derived_key_length.unwrap()];
         let argon2 = Argon2::new(Argon2id, argon2::Version::V0x13, params);
-        argon2.hash_password_into(password.as_bytes(),salt, &mut derived_key).unwrap();
+        argon2
+            .hash_password_into(password.as_bytes(), salt, &mut derived_key)
+            .unwrap();
 
         derived_key
     }
@@ -51,10 +51,7 @@ impl CryptEngine {
     }
 
     // Function to encrypt the master key using ChaCha20Poly1305
-    pub fn encrypt_master_key(
-        &self,
-        master_key: &[u8],
-    ) -> Result<(Vec<u8>, Vec<u8>), ChaChaError> {
+    pub fn encrypt_master_key(&self, master_key: &[u8]) -> Result<(Vec<u8>, Vec<u8>), ChaChaError> {
         let key = Key::from_slice(self.key.as_slice()); // Derive key from stored hash
         let nonce = Self::generate_nonce();
         let cipher = ChaCha20Poly1305::new(key);

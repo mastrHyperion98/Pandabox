@@ -1,24 +1,29 @@
 // Prevent console window in addition to Slint window in Windows release builds when, e.g., starting the app via file manager. Ignored on other platforms.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use crate::encrypt::cryptography::CryptEngine;
+use base64::Engine;
+use chacha20poly1305::Error as ChaChaError;
 use dirs::home_dir;
-use std::path::{PathBuf};
+use slint::{PlatformError, SharedString, Window};
 use std::error::Error;
 use std::fs;
-use base64::Engine;
-use slint::{PlatformError, SharedString, Window};
-use crate::encrypt::cryptography::CryptEngine;
-use chacha20poly1305::{ Error as ChaChaError};
+use std::path::PathBuf;
 
 mod database;
 mod encrypt;
+mod handler;
 
 slint::include_modules!();
 
 const APP_NAME: &str = "RustPasswordManager";
 
 // Assume you have a function to write to your database
-fn on_authenticate(data: SharedString, path: String, window: &Window) -> Result<(), Box<dyn Error>> {
+fn on_authenticate(
+    data: SharedString,
+    path: String,
+    window: &Window,
+) -> Result<(), Box<dyn Error>> {
     // Now we create the database
     let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
     let (key, nonce, salt) = manager.get_master_record()?;
@@ -39,10 +44,9 @@ fn on_authenticate(data: SharedString, path: String, window: &Window) -> Result<
     Ok(())
 }
 
-
 fn create_db(data: SharedString, path: String, window: &Window) -> Result<(), ChaChaError> {
     // Before creating the database perhaps we should create the salt, nonce and encyrption key
-    let salt = CryptEngine::generate_salt() ;
+    let salt = CryptEngine::generate_salt();
     let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
     let master_key = CryptEngine::generate_master_key();
     let (nonce, ciphertext) = engine.encrypt_master_key(master_key.as_ref())?;
@@ -51,23 +55,16 @@ fn create_db(data: SharedString, path: String, window: &Window) -> Result<(), Ch
     let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
 
     println!("Creating DB");
-    match manager.create_master_table(salt.as_ref(), ciphertext.as_ref(),  nonce.as_ref()) {
+    match manager.create_master_table(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
         Ok(_) => {
             println!("Created Master Table");
             match AuthenticateWindow::new() {
                 Ok(ui) => {
                     let weak = ui.as_weak();
-                    ui.on_authenticate({
-                        move |text_to_write| {
-                            match on_authenticate(text_to_write, path.clone(), weak.unwrap().window()) {
-                                Ok(_) => println!("Authentication Success"),
-                                Err(e) => eprintln!("Authentication Failed: {}", e),
-                            }
-                        }
-                    });
+                    handler::setup_authentication_handler(weak.clone(), path.clone());
 
-                    match ui.run() { _ =>
-                        {
+                    match ui.run() {
+                        _ => {
                             window.hide();
                         }
                     };
@@ -95,7 +92,7 @@ fn get_user_db_path_cross_platform(db_filename: &str) -> Option<PathBuf> {
 
 fn check_db_exist() -> (bool, String) {
     let db_file = "db.sqlite";
-    
+
     if let Some(db_path) = get_user_db_path_cross_platform(db_file) {
         println!("Potential database path: {}", db_path.display());
         if let Some(parent_dir) = db_path.parent() {
@@ -104,7 +101,7 @@ fn check_db_exist() -> (bool, String) {
                 fs::create_dir_all(parent_dir).expect("TODO: panic message");
             }
         }
-        
+
         if db_path.exists() {
             println!("Database file exists at: {}", db_path.display());
             let path_str = db_path.to_str().unwrap_or_default().to_owned();
@@ -137,19 +134,7 @@ fn get_initial_ui(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
         let ui = AuthenticateWindow::new()?;
         let weak = ui.as_weak();
 
-        ui.on_authenticate({
-            move |text_to_write| {
-                match on_authenticate(text_to_write, path.clone(), weak.unwrap().window()) {
-                    Ok(_) => println!("Authentication Success"),
-                    Err(e) =>{
-                        let ui_handle = weak.unwrap();
-                        ui_handle.set_is_error(true);
-                        ui_handle.set_error_msg("Incorrect Password. Failed to Authenticate".into());
-                        eprintln!("Authentication Failed: {}", e)
-                    },
-                }
-            }
-        });
+        handler::setup_authentication_handler(weak.clone(), path.clone());
 
         ui.run()?;
         Ok(())
@@ -157,16 +142,9 @@ fn get_initial_ui(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
         let ui = CreateDbWindow::new()?;
         let weak = ui.as_weak();
 
-        ui.on_createdb({
-            move |text_to_write| {
-                match create_db(text_to_write, path.clone(), weak.unwrap().window()) {
-                    Ok(_) => println!("DB Created successfully."),
-                    Err(e) => eprintln!("Error creating database: {}", e),
-                }
-            }
-        });
+        handler::setupt_createdb_handler(weak.clone(), path.clone());
+
         ui.run()?;
         Ok(())
     }
 }
-
