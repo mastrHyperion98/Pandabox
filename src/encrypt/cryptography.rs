@@ -77,7 +77,7 @@ impl CryptEngine {
 
     // Helper function to generate a random nonce
     fn generate_nonce() -> GenericArray<u8, U12> {
-        let mut nonce = [0u8; 12]; // 96-bit nonce for ChaCha20Poly1305
+        let mut nonce = [0u8; 12]; // 12-bit nonce for ChaCha20Poly1305
         OsRng.fill_bytes(&mut nonce);
         Nonce::from_slice(&nonce).clone()
     } // Recommended salt length (in bytes)

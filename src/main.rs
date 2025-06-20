@@ -31,6 +31,7 @@ fn on_authenticate(data: SharedString, path: String, window: &Window) -> Result<
         }
         Err(_) => {
             println!("Failed to decrypt master key");
+            return Err(From::from("Failed to decrypt master key"));
         }
     };
 
@@ -140,7 +141,12 @@ fn get_initial_ui(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
             move |text_to_write| {
                 match on_authenticate(text_to_write, path.clone(), weak.unwrap().window()) {
                     Ok(_) => println!("Authentication Success"),
-                    Err(e) => eprintln!("Authentication Failed: {}", e),
+                    Err(e) =>{
+                        let ui_handle = weak.unwrap();
+                        ui_handle.set_is_error(true);
+                        ui_handle.set_error_msg("Incorrect Password. Failed to Authenticate".into());
+                        eprintln!("Authentication Failed: {}", e)
+                    },
                 }
             }
         });

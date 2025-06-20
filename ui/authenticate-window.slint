@@ -4,9 +4,11 @@ export component AuthenticateWindow inherits Window {
     height: 720px;
     width: 1280px;
 
-
+    in property <bool> is_error: false;
+    in-out property <string> error_msg;
     property <string> passfield: "";
-    callback authenticate(string); // Define a signal that carries a string
+    callback authenticate(string); // Define a signal that carries a string=
+     
     VerticalLayout {
         alignment: start;
         padding: 100px;
@@ -31,27 +33,49 @@ export component AuthenticateWindow inherits Window {
                 min-width: root.width / 2;
                 height: root.height / 12;
                 LineEdit {
-
                     width: parent.width;
                     height: parent.height;
                     text <=> root.passfield;
                     input-type: InputType.password;
                     placeholder-text: "password";
+
+                    accepted(text) => {
+                        authenticate(root.passfield);
+                    }
                 }
             }
         }
 
-        VerticalLayout {
-            alignment: end;
-            HorizontalLayout {
-                alignment: center;
-                Button {
-                    width: root.width / 10;
-                    height: root.height / 20;
-                    primary: true;
-                    text: "Authenticate";
-                    clicked => {
-                        authenticate(root.passfield);
+
+        Rectangle {
+            min-height: root.height / 6;
+            
+            VerticalLayout {
+                spacing: 20px;
+                alignment: end;
+                
+                HorizontalLayout{
+                    alignment: center;
+                    Text {
+                        font-size: 18px;
+                        text: root.error_msg;
+                        // The error message is also colored red
+                        color: #ff5555;
+                        // The error message is only visible when `is-error` is true
+                        visible: root.is_error;
+                    }
+                }
+                
+                HorizontalLayout {
+                    alignment: center;
+                    Button {
+                        width: root.width / 10;
+                        height: root.height / 20;
+                        primary: true;
+                        text: "Authenticate";
+                        clicked => {
+                            authenticate(root.passfield);
+                        }
                     }
                 }
             }
