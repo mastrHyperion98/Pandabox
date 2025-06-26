@@ -1,4 +1,4 @@
-use crate::{create_db, on_authenticate, AuthenticateWindow, CreateDbWindow};
+use crate::{create_db, on_authenticate, AuthenticateWindow, CreateDbWindow, MainWindow};
 use slint::ComponentHandle;
 
 pub fn setupt_createdb_handler(ui_weak_handle: slint::Weak<CreateDbWindow>, data_path: String) {
@@ -37,4 +37,11 @@ pub fn setup_authentication_handler(
                 }
             }
         });
+}
+
+pub fn setup_main_handler(
+    ui_weak_handle: slint::Weak<MainWindow>,
+    data_path: String,
+) {
+    1;
 }
