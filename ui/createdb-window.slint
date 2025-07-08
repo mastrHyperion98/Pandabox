@@ -7,54 +7,51 @@ export component CreateDbWindow inherits Window {
 
     property <string> passfield: "";
     callback createdb(string); // Define a signal that carries a string
+
+
     VerticalLayout {
-        alignment: start;
-        padding: 100px;
+        alignment: center;
+        padding-top: 50px;
+        spacing: 100px;
         Text {
             text: "Rust Password Manager";
             font-size: 36px;
             color: Colors.darkorange;
             horizontal-alignment: center;
         }
-    }
 
-    VerticalLayout {
-        alignment: center;
-        spacing: 50px;
-        padding: 100px;
-
-        HorizontalLayout {
-            alignment: center;
-            spacing: 25px;
-
-            Rectangle {
-                min-width: root.width / 2;
-                height: root.height / 12;
-                LineEdit {
-
-                    width: parent.width;
-                    height: parent.height;
-                    text <=> root.passfield;
-                    input-type: InputType.password;
-                    placeholder-text: "Root Salt";
-                    accepted(text) => {
-                        createdb(root.passfield);
+        GridLayout {
+            spacing: 50px;
+            padding: 25px;
+            width: root.width;
+            height: root.height;
+            Row{
+                HorizontalLayout {
+                    alignment: center;
+                    LineEdit {
+                        width: root.width * 50%;
+                        height: 75px;
+                        text <=> root.passfield;
+                        input-type: InputType.password;
+                        placeholder-text: "Root Salt";
+                        accepted(text) => {
+                            createdb(root.passfield);
+                        }
                     }
                 }
             }
-        }
 
-        VerticalLayout {
-            alignment: end;
-            HorizontalLayout {
+            Row{
+                HorizontalLayout {
                 alignment: center;
-                Button {
-                    width: root.width / 10;
-                    height: root.height / 20;
-                    primary: true;
-                    text: "Create DB";
-                    clicked => {
-                        createdb(root.passfield);
+                    Button {
+                        height: root.height * 5%;
+                        width: root.width * 20%;
+                        primary: true;
+                        text: "Create DB";
+                        clicked => {
+                            createdb(root.passfield);
+                        }
                     }
                 }
             }
