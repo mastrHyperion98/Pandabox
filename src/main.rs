@@ -5,7 +5,7 @@ use crate::encrypt::cryptography::CryptEngine;
 use base64::Engine;
 use chacha20poly1305::Error as ChaChaError;
 use dirs::home_dir;
-use slint::{PlatformError, SharedString, Window};
+use slint::{ SharedString, Window};
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
@@ -32,7 +32,17 @@ fn on_authenticate(
     match engine.decrypt_master_key(nonce.as_slice(), key.as_ref()) {
         Ok(_) => {
             println!("Master key successfully decrypted");
-            window.hide().unwrap();
+           
+            match MainWindow::new() {
+                Ok(main_window) => {
+                    match main_window.run() {
+                        _ => {
+                            window.hide().unwrap();
+                        }
+                    };
+                }
+                Err(_) => {}
+            }
         }
         Err(_) => {
             println!("Failed to decrypt master key");

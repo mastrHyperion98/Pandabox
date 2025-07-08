@@ -5,7 +5,7 @@ use argon2::ParamsBuilder;
 use chacha20poly1305::aead::generic_array::GenericArray;
 use chacha20poly1305::aead::Aead;
 use chacha20poly1305::consts::U12;
-use chacha20poly1305::{AeadCore, ChaCha20Poly1305, Error as ChaChaError, Key, KeyInit, Nonce};
+use chacha20poly1305::{ChaCha20Poly1305, Error as ChaChaError, Key, KeyInit, Nonce};
 use rand_core::RngCore;
 
 const SALT_LENGTH: usize = 32;
