@@ -3,7 +3,7 @@ import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
 export component CreateDbWindow inherits Window {
     height: 720px;
     width: 1280px;
-
+    icon: @image-url("../resources/ico.png");
 
     property <string> passfield: "";
     callback createdb(string); // Define a signal that carries a string
