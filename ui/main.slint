@@ -1,5 +1,41 @@
-import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
-import { Palette, StandardTableView, ScrollView, StyleMetrics } from "std-widgets.slint";
+import { Button } from "std-widgets.slint";
+import { Palette, StandardTableView, ScrollView, StyleMetrics, LineEdit } from "std-widgets.slint";
+import { CreateEntryDialog } from "dialogs.slint"; // Import your dialog
+
+
+// Define a global property that will hold our table data
+export global AppData {
+    in-out property <[[StandardListViewItem]]> table-rows: [
+        [
+            { text: "Netflix" },
+            { text: "email_abc@def.com" },
+            { text: "NotARealUser" },
+            { text: "NotAPassword" },
+            { text: "Netflix & Chill creds" },
+            { text: "2026-01-01T10:12:23" },
+        ],
+        [
+            { text: "NotLastNetflix" },
+            { text: "email_abc@def.com" },
+            { text: "NotARealUser" },
+            { text: "NotAPassword" },
+            { text: "Netfli2 & Chill creds" },
+            { text: "2026-01-01T10:12:23" },
+        ],
+    ];
+
+    // Callback to trigger adding a row from the UI
+    callback add-new-row();
+}
+
+export struct NewEntryData {
+    service: string,
+    email: string,
+    username: string,
+    password: string,
+    notes: string,
+}
+
 
 export component MainWindow inherits Window {
     title: "PassLock";
@@ -7,26 +43,121 @@ export component MainWindow inherits Window {
     min-height: 1080px;
     icon: @image-url("../resources/ico.png");
 
-    callback file-new();
-    callback file-open();
+    callback import_file();
+    callback export_file();
+    callback save();
+    callback exit();
+    callback request-show-create-dialog();
 
     MenuBar {
         Menu {
             title: @tr("File");
             MenuItem {
                 title: @tr("Import");
-                activated => { file-new(); }
+                activated => { import_file(); }
             }
             MenuItem {
                 title: @tr("Export");
-                activated => { file-open(); }
+                activated => { export_file(); }
             }
             MenuItem {
                 title: @tr("Save");
-                activated => { file-open(); }
+                activated => { save(); }
+            }
+            MenuItem {
+                title: @tr("Exit");
+                activated => { exit(); }
             }
         }
     }
+
+    create_popup := PopupWindow {
+            in property <string> service-input: "";
+            in property <string> email-input: "";
+            in property <string> username-input: "";
+            in property <string> password-input: "";
+            in property <string> notes-input: "";
+
+            close-policy: PopupClosePolicy.close-on-click-outside;
+            Rectangle {
+                background: darkorange;
+
+
+                VerticalLayout {
+                    alignment: center;
+                    padding: 15px;
+                    spacing: 10px;
+
+                // Input fields
+                    VerticalLayout {
+                        spacing: 5px;
+                        Text { text: "Service:"; }
+                        LineEdit {
+                            text: service-input;
+                            edited => { service-input == self.text; }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 5px;
+                        Text { text: "Email:"; }
+                        LineEdit {
+                            text: email-input;
+                            edited => { email-input == self.text; }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 5px;
+                        Text { text: "Username:"; }
+                        LineEdit {
+                            text: username-input;
+                            edited => { username-input == self.text; }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 5px;
+                        Text { text: "Password:"; }
+                        LineEdit {
+                            text: password-input;
+                            edited => { password-input == self.text; }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 5px;
+                        Text { text: "Notes:"; }
+                        LineEdit {
+                            text: notes-input;
+                            edited => { notes-input == self.text; }
+                        }
+                    }
+
+                    // Buttons at the bottom
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: end; // Align buttons to the right
+
+                        Button {
+                            text: "Cancel";
+                            clicked => {
+                              create_popup.close();
+                            }
+                        }
+                        Button {
+                            text: "Create";
+                            primary: true; // Highlight as primary action
+                            clicked => {
+    //                            root.request-create({
+    //                                service: root.service-input,
+    //                                email: root.email-input,
+    //                                username: root.username-input,
+    //                                password: root.password-input,
+    //                                notes: root.notes-input,
+    //                            });
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
   GridLayout {
     padding: 25px;
@@ -35,7 +166,12 @@ export component MainWindow inherits Window {
     Row {
         HorizontalLayout {
             spacing: 25px;
-            Button {text: "Create"; primary: true;}
+            Button {
+                text: "Create"; primary: true;
+                clicked => {
+                    create_popup.show(); // Trigger the dialog
+                    }
+                }
             Button {text: "Edit";}
             Button {text: "Delete";}
             Button {text: "Duplicate & Refresh";}
@@ -54,25 +190,7 @@ export component MainWindow inherits Window {
                 { title: "Last Update",  min-width: 150px, horizontal_stretch: 0},
             ];
             // figure out how to dynamically set this data
-            rows: [
-                [
-                    { text: "Netflix" },
-                    { text: "email_abc@def.com" },
-                    { text: "NotARealUser" },
-                    { text: "NotAPassword" },
-                    { text: "Netflix & Chill creds" },
-                    { text: "2026-01-01T10:12:23" },
-                ],
-                [
-                    { text: "NotLastNetflix" },
-                    { text: "email_abc@def.com" },
-                    { text: "NotARealUser" },
-                    { text: "NotAPassword" },
-                    { text: "Netflix & Chill creds" },
-                    { text: "2026-01-01T10:12:23" },
-                ],
-
-            ];
+            rows: AppData.table-rows;
         }
     }
   }

@@ -1,0 +1,105 @@
+// dialogs.slint
+import { LineEdit, Button } from "std-widgets.slint";
+
+// Define a struct to hold the data for a new entry
+export struct NewEntryData {
+    service: string,
+    email: string,
+    username: string,
+    password: string,
+    notes: string,
+}
+
+export component CreateEntryDialog inherits Window {
+    title: "Create New Entry";
+    width: 600px;
+    height: 600px;
+
+    // Properties to hold the current input values
+    in property <string> service-input: "";
+    in property <string> email-input: "";
+    in property <string> username-input: "";
+    in property <string> password-input: "";
+    in property <string> notes-input: "";
+
+    // Callbacks for buttons
+    callback request-create(NewEntryData); // Emits the data when "Create" is clicked
+    callback request-cancel(); // For "Cancel" button
+
+    VerticalLayout {
+        padding: 15px;
+        spacing: 10px;
+
+        // Input fields
+        VerticalLayout {
+            spacing: 5px;
+            Text { text: "Service:"; }
+            LineEdit {
+                text: root.service-input;
+                edited => { root.service-input == self.text; }
+            }
+        }
+        VerticalLayout {
+            spacing: 5px;
+            Text { text: "Email:"; }
+            LineEdit {
+                text: root.email-input;
+                edited => { root.email-input == self.text; }
+            }
+        }
+        VerticalLayout {
+            spacing: 5px;
+            Text { text: "Username:"; }
+            LineEdit {
+                text: root.username-input;
+                edited => { root.username-input == self.text; }
+            }
+        }
+        VerticalLayout {
+            spacing: 5px;
+            Text { text: "Password:"; }
+            LineEdit {
+                text: root.password-input;
+                edited => { root.password-input == self.text; }
+            }
+        }
+        VerticalLayout {
+            spacing: 5px;
+            Text { text: "Notes:"; }
+            LineEdit {
+                text: root.notes-input;
+                edited => { root.notes-input == self.text; }
+            }
+        }
+
+        // Buttons at the bottom
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: end; // Align buttons to the right
+
+            Button {
+                width: root.width * 20%;
+                height: root.height * 10%;
+                text: "Cancel";
+                clicked => {
+                    root.request-cancel();
+                }
+            }
+            Button {
+                width: root.width * 20%;
+                height: root.height * 10%;
+                text: "Create";
+                primary: true; // Highlight as primary action
+                clicked => {
+                    root.request-create({
+                        service: root.service-input,
+                        email: root.email-input,
+                        username: root.username-input,
+                        password: root.password-input,
+                        notes: root.notes-input,
+                    });
+                }
+            }
+        }
+    }
+}
