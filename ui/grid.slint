@@ -37,39 +37,12 @@ export struct NewEntryData {
 }
 
 
-export component MainWindow inherits Window {
-    title: "PassLock";
-    min-width: 1920px;
-    min-height: 1080px;
-    icon: @image-url("../resources/ico.png");
-
+export component MainWindow{
     callback import_file();
     callback export_file();
     callback save();
     callback exit();
     callback request-show-create-dialog();
-
-    MenuBar {
-        Menu {
-            title: @tr("File");
-            MenuItem {
-                title: @tr("Import");
-                activated => { import_file(); }
-            }
-            MenuItem {
-                title: @tr("Export");
-                activated => { export_file(); }
-            }
-            MenuItem {
-                title: @tr("Save");
-                activated => { save(); }
-            }
-            MenuItem {
-                title: @tr("Exit");
-                activated => { exit(); }
-            }
-        }
-    }
 
     create_popup := PopupWindow {
             in property <string> service-input: "";
