@@ -1,16 +1,14 @@
 import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
 
-export component AuthenticateWindow inherits Window {
-    height: 720px;
-    width: 1280px;
-    icon: @image-url("../resources/ico.png");
-
-
+export component AuthView {
+    in property <string> button_text;
+    in property <string> placeholder_text;
     in property <bool> is_error: false;
-    in-out property <string> error_msg;
-    property <string> passfield: "";
-    callback authenticate(string); // Define a signal that carries a string=
-     
+    in property <string> error_msg: "";
+
+    in-out property <string> passfield: "";
+    callback submitted(string);
+
     VerticalLayout {
         alignment: center;
         padding-top: 50px;
@@ -25,21 +23,17 @@ export component AuthenticateWindow inherits Window {
         GridLayout {
             spacing: 50px;
             padding: 25px;
-            width: root.width;
-            height: root.height;
-
-            Row{
+            Row {
                 HorizontalLayout {
                     alignment: center;
-                    spacing: 25px;
                     LineEdit {
-                        width: root.width * 50%;
-                        height: 75px;
+                        min-width: 400px;
+                        min-height: 50px;
                         text <=> root.passfield;
                         input-type: InputType.password;
-                        placeholder-text: "password";
+                        placeholder-text: root.placeholder_text;
                         accepted(text) => {
-                            authenticate(root.passfield);
+                            root.submitted(root.passfield);
                         }
                     }
                 }
@@ -49,12 +43,11 @@ export component AuthenticateWindow inherits Window {
                 HorizontalLayout {
                     alignment: center;
                     Button {
-                        width: root.width / 10;
-                        height: root.height / 20;
+                        min-width: 125px;
                         primary: true;
-                        text: "Authenticate";
+                        text: root.button_text;
                         clicked => {
-                            authenticate(root.passfield);
+                            root.submitted(root.passfield);
                         }
                     }
                 }
@@ -66,9 +59,7 @@ export component AuthenticateWindow inherits Window {
                     Text {
                         font-size: 18px;
                         text: root.error_msg;
-                        // The error message is also colored red
                         color: #ff5555;
-                        // The error message is only visible when `is-error` is true
                         visible: root.is_error;
                     }
                 }

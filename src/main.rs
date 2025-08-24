@@ -19,75 +19,75 @@ slint::include_modules!();
 const APP_NAME: &str = "RustPasswordManager";
 
 // Assume you have a function to write to your database
-fn on_authenticate(
-    data: SharedString,
-    path: String,
-    window: &Window,
-) -> Result<(), Box<dyn Error>> {
-    // Now we create the database
-    let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
-    let (key, nonce, salt) = manager.get_master_record()?;
+// fn on_authenticate(
+//     data: SharedString,
+//     path: String,
+//     window: &Window,
+// ) -> Result<(), Box<dyn Error>> {
+//     // Now we create the database
+//     let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
+//     let (key, nonce, salt) = manager.get_master_record()?;
+//
+//     let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
+//     match engine.decrypt_master_key(nonce.as_slice(), key.as_ref()) {
+//         Ok(_) => {
+//             println!("Master key successfully decrypted");
+//
+//             match MainWindow::new() {
+//                 Ok(main_window) => {
+//                     match main_window.run() {
+//                         _ => {
+//                             window.hide().unwrap();
+//                         }
+//                     };
+//                 }
+//                 Err(_) => {}
+//             }
+//         }
+//         Err(_) => {
+//             println!("Failed to decrypt master key");
+//             return Err(From::from("Failed to decrypt master key"));
+//         }
+//     };
+//
+//     // In a real application, you would have your database interaction logic here
+//     Ok(())
+// }
 
-    let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
-    match engine.decrypt_master_key(nonce.as_slice(), key.as_ref()) {
-        Ok(_) => {
-            println!("Master key successfully decrypted");
-           
-            match MainWindow::new() {
-                Ok(main_window) => {
-                    match main_window.run() {
-                        _ => {
-                            window.hide().unwrap();
-                        }
-                    };
-                }
-                Err(_) => {}
-            }
-        }
-        Err(_) => {
-            println!("Failed to decrypt master key");
-            return Err(From::from("Failed to decrypt master key"));
-        }
-    };
-
-    // In a real application, you would have your database interaction logic here
-    Ok(())
-}
-
-fn create_db(data: SharedString, path: String, window: &Window) -> Result<(), ChaChaError> {
-    // Before creating the database perhaps we should create the salt, nonce and encyrption key
-    let salt = CryptEngine::generate_salt();
-    let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
-    let master_key = CryptEngine::generate_master_key();
-    let (nonce, ciphertext) = engine.encrypt_master_key(master_key.as_ref())?;
-
-    // Now we create the database
-    let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
-
-    println!("Creating DB");
-    match manager.create_master_table(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
-        Ok(_) => {
-            println!("Created Master Table");
-            match AuthenticateWindow::new() {
-                Ok(ui) => {
-                    let weak = ui.as_weak();
-                    handler::setup_authentication_handler(weak.clone(), path.clone());
-
-                    match ui.run() {
-                        _ => {
-                            window.hide();
-                        }
-                    };
-                }
-                Err(_) => {}
-            };
-        }
-        Err(_) => {
-            println!("Failed to create Master Table");
-        }
-    };
-    Ok(())
-}
+// fn create_db(data: SharedString, path: String, window: &Window) -> Result<(), ChaChaError> {
+//     // Before creating the database perhaps we should create the salt, nonce and encyrption key
+//     let salt = CryptEngine::generate_salt();
+//     let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
+//     let master_key = CryptEngine::generate_master_key();
+//     let (nonce, ciphertext) = engine.encrypt_master_key(master_key.as_ref())?;
+//
+//     // Now we create the database
+//     let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
+//
+//     println!("Creating DB");
+//     match manager.create_master_table(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
+//         Ok(_) => {
+//             println!("Created Master Table");
+//             match AuthenticateWindow::new() {
+//                 Ok(ui) => {
+//                     let weak = ui.as_weak();
+//                     handler::setup_authentication_handler(weak.clone(), path.clone());
+//
+//                     match ui.run() {
+//                         _ => {
+//                             window.hide();
+//                         }
+//                     };
+//                 }
+//                 Err(_) => {}
+//             };
+//         }
+//         Err(_) => {
+//             println!("Failed to create Master Table");
+//         }
+//     };
+//     Ok(())
+// }
 
 fn get_user_db_path_cross_platform(db_filename: &str) -> Option<PathBuf> {
     if let Some(mut home) = home_dir() {
@@ -140,21 +140,12 @@ fn run(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
 
 //TODO: Have this return the ui and have it execute ui.run in the run function of this main program
 fn get_initial_ui(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
+    let ui = EntryWindow::new()?;
+
     if db_exist {
-        let ui = AuthenticateWindow::new()?;
-        let weak = ui.as_weak();
-
-        handler::setup_authentication_handler(weak.clone(), path.clone());
-
-        ui.run()?;
-        Ok(())
-    } else {
-        let ui = CreateDbWindow::new()?;
-        let weak = ui.as_weak();
-
-        handler::setupt_createdb_handler(weak.clone(), path.clone());
-
-        ui.run()?;
-        Ok(())
+        ui.set_current_page(Page::Authenticate);
     }
+
+    ui.run()?;
+    Ok(())
 }

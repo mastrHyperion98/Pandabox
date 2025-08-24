@@ -1,79 +1,24 @@
-import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
-import { Palette, StandardTableView, ScrollView, StyleMetrics } from "std-widgets.slint";
+import { Button } from "std-widgets.slint";
+import {CreateDbWindow} from "createdb-window.slint";
+import {AuthenticateWindow} from "authenticate-window.slint";
+import {MainWindow} from "grid.slint";
 
-export component MainWindow inherits Window {
+export enum Page {
+    CreateDb,
+    Authenticate,
+    Passlock
+}
+
+export component EntryWindow inherits Window {
     title: "PassLock";
-    min-width: 1920px;
-    min-height: 1080px;
+    min-width: 1280px;
+    min-height: 720px;
     icon: @image-url("../resources/ico.png");
 
-    callback file-new();
-    callback file-open();
+    in-out property <Page> current_page: Page.CreateDb;
 
-    MenuBar {
-        Menu {
-            title: @tr("File");
-            MenuItem {
-                title: @tr("Import");
-                activated => { file-new(); }
-            }
-            MenuItem {
-                title: @tr("Export");
-                activated => { file-open(); }
-            }
-            MenuItem {
-                title: @tr("Save");
-                activated => { file-open(); }
-            }
-        }
-    }
 
-  GridLayout {
-    padding: 25px;
-    spacing: 50px;
-
-    Row {
-        HorizontalLayout {
-            spacing: 25px;
-            Button {text: "Create"; primary: true;}
-            Button {text: "Edit";}
-            Button {text: "Delete";}
-            Button {text: "Duplicate & Refresh";}
-
-        }
-    }
-
-    Row{
-        StandardTableView {
-            columns: [
-                { title: "Application", min_width: 100px},
-                { title: "Email", min_width: 100px },
-                { title: "Username",min_width: 100px },
-                { title: "Password", min_width: 100px },
-                { title: "Description", min_width: 100px },
-                { title: "Last Update",  min-width: 150px, horizontal_stretch: 0},
-            ];
-            // figure out how to dynamically set this data
-            rows: [
-                [
-                    { text: "Netflix" },
-                    { text: "email_abc@def.com" },
-                    { text: "NotARealUser" },
-                    { text: "NotAPassword" },
-                    { text: "Netflix & Chill creds" },
-                    { text: "2026-01-01T10:12:23" },
-                ],
-                [
-                    { text: "NotLastNetflix" },
-                    { text: "email_abc@def.com" },
-                    { text: "NotARealUser" },
-                    { text: "NotAPassword" },
-                    { text: "Netflix & Chill creds" },
-                    { text: "2026-01-01T10:12:23" },
-                ],
-
-            ];
-        }
-    }
-  }
- }
+    if current_page == Page.CreateDb: CreateDbWindow{}
+    if current_page == Page.Authenticate: AuthenticateWindow{}
+    if current_page == Page.Passlock:  MainWindow{}
+}
