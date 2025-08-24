@@ -1,6 +1,9 @@
 import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
 
-export component AuthenticateWindow  {
+export component AuthenticateWindow inherits Window  {
+    height: 720px;
+    width: 1280px;
+    icon: @image-url("../resources/ico.png");
     in property <bool> is_error: false;
     in-out property <string> error_msg;
     property <string> passfield: "";

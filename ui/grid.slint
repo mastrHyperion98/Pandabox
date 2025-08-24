@@ -1,6 +1,6 @@
 import { Button } from "std-widgets.slint";
 import { Palette, StandardTableView, ScrollView, StyleMetrics, LineEdit } from "std-widgets.slint";
-import { CreateEntryDialog } from "dialogs.slint"; // Import your dialog
+import { CreateEntryDialog } from "dialogs.slint";
 
 
 // Define a global property that will hold our table data
@@ -38,6 +38,9 @@ export struct NewEntryData {
 
 
 export component MainWindow{
+    min-width: 1280px;
+    min-height: 720px;
+
     callback import_file();
     callback export_file();
     callback save();

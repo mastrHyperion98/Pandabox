@@ -11,8 +11,8 @@ export enum Page {
 
 export component EntryWindow inherits Window {
     title: "PassLock";
-    min-width: 1920px;
-    min-height: 1080px;
+    min-width: 1280px;
+    min-height: 720px;
     icon: @image-url("../resources/ico.png");
 
     in-out property <Page> current_page: Page.CreateDb;
@@ -20,5 +20,5 @@ export component EntryWindow inherits Window {
 
     if current_page == Page.CreateDb: CreateDbWindow{}
     if current_page == Page.Authenticate: AuthenticateWindow{}
-    if  current_page == Page.Passlock:  MainWindow{}
+    if current_page == Page.Passlock:  MainWindow{}
 }
