@@ -54,40 +54,38 @@ const APP_NAME: &str = "RustPasswordManager";
 //     Ok(())
 // }
 
-// fn create_db(data: SharedString, path: String, window: &Window) -> Result<(), ChaChaError> {
-//     // Before creating the database perhaps we should create the salt, nonce and encyrption key
-//     let salt = CryptEngine::generate_salt();
-//     let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
-//     let master_key = CryptEngine::generate_master_key();
-//     let (nonce, ciphertext) = engine.encrypt_master_key(master_key.as_ref())?;
-//
-//     // Now we create the database
-//     let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
-//
-//     println!("Creating DB");
-//     match manager.create_master_table(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
-//         Ok(_) => {
-//             println!("Created Master Table");
-//             match AuthenticateWindow::new() {
-//                 Ok(ui) => {
-//                     let weak = ui.as_weak();
-//                     handler::setup_authentication_handler(weak.clone(), path.clone());
-//
-//                     match ui.run() {
-//                         _ => {
-//                             window.hide();
-//                         }
-//                     };
-//                 }
-//                 Err(_) => {}
-//             };
-//         }
-//         Err(_) => {
-//             println!("Failed to create Master Table");
-//         }
-//     };
-//     Ok(())
-// }
+fn create_db(data: SharedString, path: String) -> bool {
+    // Before creating the database perhaps we should create the salt, nonce and encyrption key
+    let salt = CryptEngine::generate_salt();
+    let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
+    let master_key = CryptEngine::generate_master_key();
+    let (nonce, ciphertext) = engine.encrypt_master_key(master_key.as_ref()).unwrap();
+
+    // Now we create the database
+    let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
+
+    println!("Creating DB");
+    let mut status = false;
+    match manager.create_master_table(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
+        Ok(_) => {
+            println!("Created Master Table");
+            status=true;
+        }
+        Err(_) => {
+            println!("Failed to create Master Table");
+        }
+    }
+
+    status
+}
+
+fn create_db_submitted(input: SharedString, path: String) -> bool {
+    create_db(input, path)
+}
+
+fn authenticate_submitted(input: SharedString) -> bool {
+    false
+}
 
 fn get_user_db_path_cross_platform(db_filename: &str) -> Option<PathBuf> {
     if let Some(mut home) = home_dir() {
@@ -147,6 +145,20 @@ fn get_initial_ui(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
     else{
         ui.set_current_page(Page::CreateDb);
     }
+
+    let ui_weak = ui.as_weak();
+    ui.on_create_db_submitted(move |input| {
+        let is_created_db_success = create_db_submitted(input, path.clone());
+
+        if is_created_db_success == false{
+            println!("Database created Failed!");
+            return;
+        }
+       if let Some(ui) = ui_weak.upgrade(){
+            println!("Database created Successfully!");
+            ui.set_current_page(Page::Authenticate);
+        }
+    });
 
     ui.run()?;
     Ok(())
