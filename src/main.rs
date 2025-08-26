@@ -3,9 +3,8 @@
 
 use crate::encrypt::cryptography::CryptEngine;
 use base64::Engine;
-use chacha20poly1305::Error as ChaChaError;
 use dirs::home_dir;
-use slint::{ SharedString, Window};
+use slint::{ SharedString};
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
