@@ -138,12 +138,14 @@ fn run(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-//TODO: Have this return the ui and have it execute ui.run in the run function of this main program
 fn get_initial_ui(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
     let ui = EntryWindow::new()?;
 
     if db_exist {
         ui.set_current_page(Page::Authenticate);
+    }
+    else{
+        ui.set_current_page(Page::CreateDb);
     }
 
     ui.run()?;

@@ -1,6 +1,5 @@
 import { Button } from "std-widgets.slint";
-import {CreateDbWindow} from "createdb-window.slint";
-import {AuthenticateWindow} from "authenticate-window.slint";
+import { AuthView } from "auth-view.slint";
 import {MainWindow} from "grid.slint";
 
 export enum Page {
@@ -10,6 +9,9 @@ export enum Page {
 }
 
 export component EntryWindow inherits Window {
+    callback create_db_submitted(string);
+    callback authenticate_submitted(string);
+
     title: "PassLock";
     min-width: 1280px;
     min-height: 720px;
@@ -18,7 +20,15 @@ export component EntryWindow inherits Window {
     in-out property <Page> current_page: Page.CreateDb;
 
 
-    if current_page == Page.CreateDb: CreateDbWindow{}
-    if current_page == Page.Authenticate: AuthenticateWindow{}
+    if current_page == Page.CreateDb: AuthView {
+        button_text: "Create Database";
+        placeholder_text: "Enter a strong master password";
+        submitted(str) => { root.create_db_submitted(str) }
+    }
+    if current_page == Page.Authenticate: AuthView {
+        button_text: "Authenticate";
+        placeholder_text: "Enter your master password";
+        submitted(str) => { root.authenticate_submitted(str) }
+    }
     if current_page == Page.Passlock:  MainWindow{}
 }
