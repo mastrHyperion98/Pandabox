@@ -11,8 +11,6 @@ use std::path::PathBuf;
 
 mod database;
 mod encrypt;
-mod handler;
-
 slint::include_modules!();
 
 const APP_NAME: &str = "RustPasswordManager";
