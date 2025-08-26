@@ -19,40 +19,29 @@ slint::include_modules!();
 const APP_NAME: &str = "RustPasswordManager";
 
 // Assume you have a function to write to your database
-// fn on_authenticate(
-//     data: SharedString,
-//     path: String,
-//     window: &Window,
-// ) -> Result<(), Box<dyn Error>> {
-//     // Now we create the database
-//     let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
-//     let (key, nonce, salt) = manager.get_master_record()?;
-//
-//     let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
-//     match engine.decrypt_master_key(nonce.as_slice(), key.as_ref()) {
-//         Ok(_) => {
-//             println!("Master key successfully decrypted");
-//
-//             match MainWindow::new() {
-//                 Ok(main_window) => {
-//                     match main_window.run() {
-//                         _ => {
-//                             window.hide().unwrap();
-//                         }
-//                     };
-//                 }
-//                 Err(_) => {}
-//             }
-//         }
-//         Err(_) => {
-//             println!("Failed to decrypt master key");
-//             return Err(From::from("Failed to decrypt master key"));
-//         }
-//     };
-//
-//     // In a real application, you would have your database interaction logic here
-//     Ok(())
-// }
+fn on_authenticate(
+    data: SharedString,
+    path: String,
+) -> bool {
+    // Now we create the database
+    let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
+    let (key, nonce, salt) = manager.get_master_record().unwrap();
+
+    let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
+    let mut status = false;
+    match engine.decrypt_master_key(nonce.as_slice(), key.as_ref()) {
+        Ok(_) => {
+            println!("Master key successfully decrypted");
+            status=true;
+        }
+        Err(_) => {
+            println!("Failed to decrypt master key");
+        }
+    };
+
+    status
+
+}
 
 fn create_db(data: SharedString, path: String) -> bool {
     // Before creating the database perhaps we should create the salt, nonce and encyrption key
@@ -83,8 +72,8 @@ fn create_db_submitted(input: SharedString, path: String) -> bool {
     create_db(input, path)
 }
 
-fn authenticate_submitted(input: SharedString) -> bool {
-    false
+fn authenticate_submitted(input: SharedString, path: String) -> bool {
+    on_authenticate(input, path)
 }
 
 fn get_user_db_path_cross_platform(db_filename: &str) -> Option<PathBuf> {
@@ -147,16 +136,37 @@ fn get_initial_ui(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
     }
 
     let ui_weak = ui.as_weak();
+
+    // Clone for the first closure so originals remain available
+    let path_for_create = path.clone();
+    let ui_weak_for_create = ui_weak.clone();
+
     ui.on_create_db_submitted(move |input| {
-        let is_created_db_success = create_db_submitted(input, path.clone());
+        let is_created_db_success = create_db_submitted(input, path_for_create.clone());
 
         if is_created_db_success == false{
             println!("Database created Failed!");
             return;
         }
-       if let Some(ui) = ui_weak.upgrade(){
+        if let Some(ui) = ui_weak_for_create.upgrade(){
             println!("Database created Successfully!");
             ui.set_current_page(Page::Authenticate);
+        }
+    });
+
+    // Clone ui_weak again for the second closure (optional but clearer)
+    let ui_weak_for_auth = ui_weak.clone();
+
+    ui.on_authenticate_submitted(move |authenticate| {
+        let is_authenticate_success = authenticate_submitted(authenticate, path.clone());
+
+        if is_authenticate_success == false{
+            println!("Authentication Failed!");
+            return;
+        }
+        if let Some(ui) = ui_weak_for_auth.upgrade(){
+            println!("Authentication Success");
+            ui.set_current_page(Page::Passlock);
         }
     });
 
