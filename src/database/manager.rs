@@ -31,7 +31,7 @@ impl DatabaseManager {
         match self.insert_master_table(salt, encrypted_master, nonce) {
             Ok(_) => println!("Insertion was successful"),
             Err(e) => eprintln!("Error during insertion: {}", e),
-        }
+        };
 
         Ok(())
     }

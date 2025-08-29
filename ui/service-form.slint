@@ -1,0 +1,101 @@
+import { Button, LineEdit, TextEdit } from "std-widgets.slint";
+
+export struct ServiceData {
+    service: string,
+    email: string,
+    username: string,
+    password: string,
+    notes: string
+}
+
+export component ServiceForm {
+    in-out property <string> title;
+    in-out property <ServiceData> service-data;
+    
+    // Individual properties for two-way binding
+    in-out property <string> service-name;
+    in-out property <string> email;
+    in-out property <string> username;
+    in-out property <string> password;
+    in-out property <string> notes;
+    
+    callback save-pressed(ServiceData);
+    callback cancel-pressed();
+    callback generate-password();
+    
+    min-width: 500px;
+    min-height: 720px;
+
+    
+    VerticalLayout {
+        padding: 20px;
+        spacing: 15px;
+
+        Text {
+            text: root.title;
+            font-size: 20px;
+            font-weight: 500;
+            color: orange;
+        }
+        
+        Text { text: "Service"; }
+        LineEdit { 
+            text <=> root.service-name;
+        }
+        
+        Text { text: "Email"; }
+        LineEdit { 
+            text <=> root.email;
+        }
+        
+        Text { text: "Username"; }
+        LineEdit { 
+            text <=> root.username;
+        }
+        
+        Text { text: "Password"; }
+        LineEdit { 
+            text <=> root.password;
+            input-type: InputType.password;
+        }
+
+        Button {
+            text: "Generate Password";
+            clicked => {
+                root.generate-password();
+            }
+        }
+        
+        Text { text: "Notes"; }
+        TextEdit { 
+            text <=> root.notes;
+            height: 100px;
+        }
+        
+        HorizontalLayout {
+            spacing: 10px;
+            Button {
+                text: "Cancel";
+                clicked => { root.cancel-pressed(); }
+            }
+            Button {
+                text: root.title;
+                primary: true;
+                clicked => { 
+                    root.save-pressed({
+                        service: root.service-name,
+                        email: root.email,
+                        username: root.username,
+                        password: root.password,
+                        notes: root.notes
+                    });
+                }
+            }
+        }
+    }
+    
+    animate x {
+        duration: 150ms;
+        easing: ease-in-out;
+    }
+}

@@ -2,7 +2,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use crate::encrypt::cryptography::CryptEngine;
-use base64::Engine;
 use dirs::home_dir;
 use slint::{ SharedString};
 use std::error::Error;
@@ -166,6 +165,8 @@ fn get_initial_ui(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
             ui.set_current_page(Page::Passlock);
         }
     });
+
+    ui.on_generate_password(|| SharedString::from(CryptEngine::generate_random_password()));
 
     ui.run()?;
     Ok(())

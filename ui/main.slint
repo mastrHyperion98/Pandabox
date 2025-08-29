@@ -1,6 +1,6 @@
 import { Button } from "std-widgets.slint";
 import { AuthView } from "auth-view.slint";
-import {MainWindow} from "grid.slint";
+import {ServiceView} from "services-view.slint";
 
 export enum Page {
     CreateDb,
@@ -11,6 +11,7 @@ export enum Page {
 export component EntryWindow inherits Window {
     callback create_db_submitted(string);
     callback authenticate_submitted(string);
+    callback generate_password()->string;
 
     title: "PassLock";
     min-width: 1280px;
@@ -30,5 +31,7 @@ export component EntryWindow inherits Window {
         placeholder_text: "Enter your master password";
         submitted(str) => { root.authenticate_submitted(str) }
     }
-    if current_page == Page.Passlock:  MainWindow{}
+    if current_page == Page.Passlock:  ServiceView{
+        generate_password() => { root.generate_password() }
+    }
 }
