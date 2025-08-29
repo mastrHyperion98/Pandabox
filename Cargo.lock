@@ -15,6 +15,7 @@ dependencies = [
  "rusqlite",
  "slint",
  "slint-build",
+ "zeroize",
 ]
 
 [[package]]
