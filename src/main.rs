@@ -2,92 +2,75 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use crate::encrypt::cryptography::CryptEngine;
-use base64::Engine;
-use chacha20poly1305::Error as ChaChaError;
 use dirs::home_dir;
-use slint::{ SharedString, Window};
+use slint::{ SharedString};
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
 mod database;
 mod encrypt;
-mod handler;
-
 slint::include_modules!();
 
 const APP_NAME: &str = "RustPasswordManager";
 
 // Assume you have a function to write to your database
-// fn on_authenticate(
-//     data: SharedString,
-//     path: String,
-//     window: &Window,
-// ) -> Result<(), Box<dyn Error>> {
-//     // Now we create the database
-//     let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
-//     let (key, nonce, salt) = manager.get_master_record()?;
-//
-//     let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
-//     match engine.decrypt_master_key(nonce.as_slice(), key.as_ref()) {
-//         Ok(_) => {
-//             println!("Master key successfully decrypted");
-//
-//             match MainWindow::new() {
-//                 Ok(main_window) => {
-//                     match main_window.run() {
-//                         _ => {
-//                             window.hide().unwrap();
-//                         }
-//                     };
-//                 }
-//                 Err(_) => {}
-//             }
-//         }
-//         Err(_) => {
-//             println!("Failed to decrypt master key");
-//             return Err(From::from("Failed to decrypt master key"));
-//         }
-//     };
-//
-//     // In a real application, you would have your database interaction logic here
-//     Ok(())
-// }
+fn on_authenticate(
+    data: SharedString,
+    path: String,
+) -> bool {
+    // Now we create the database
+    let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
+    let (key, nonce, salt) = manager.get_master_record().unwrap();
 
-// fn create_db(data: SharedString, path: String, window: &Window) -> Result<(), ChaChaError> {
-//     // Before creating the database perhaps we should create the salt, nonce and encyrption key
-//     let salt = CryptEngine::generate_salt();
-//     let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
-//     let master_key = CryptEngine::generate_master_key();
-//     let (nonce, ciphertext) = engine.encrypt_master_key(master_key.as_ref())?;
-//
-//     // Now we create the database
-//     let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
-//
-//     println!("Creating DB");
-//     match manager.create_master_table(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
-//         Ok(_) => {
-//             println!("Created Master Table");
-//             match AuthenticateWindow::new() {
-//                 Ok(ui) => {
-//                     let weak = ui.as_weak();
-//                     handler::setup_authentication_handler(weak.clone(), path.clone());
-//
-//                     match ui.run() {
-//                         _ => {
-//                             window.hide();
-//                         }
-//                     };
-//                 }
-//                 Err(_) => {}
-//             };
-//         }
-//         Err(_) => {
-//             println!("Failed to create Master Table");
-//         }
-//     };
-//     Ok(())
-// }
+    let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
+    let mut status = false;
+    match engine.decrypt_master_key(nonce.as_slice(), key.as_ref()) {
+        Ok(_) => {
+            println!("Master key successfully decrypted");
+            status=true;
+        }
+        Err(_) => {
+            println!("Failed to decrypt master key");
+        }
+    };
+
+    status
+
+}
+
+fn create_db(data: SharedString, path: String) -> bool {
+    // Before creating the database perhaps we should create the salt, nonce and encyrption key
+    let salt = CryptEngine::generate_salt();
+    let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
+    let master_key = CryptEngine::generate_master_key();
+    let (nonce, ciphertext) = engine.encrypt_master_key(master_key.as_ref()).unwrap();
+
+    // Now we create the database
+    let manager = database::manager::DatabaseManager::new(path.as_str()).unwrap();
+
+    println!("Creating DB");
+    let mut status = false;
+    match manager.create_master_table(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
+        Ok(_) => {
+            println!("Created Master Table");
+            status=true;
+        }
+        Err(_) => {
+            println!("Failed to create Master Table");
+        }
+    }
+
+    status
+}
+
+fn create_db_submitted(input: SharedString, path: String) -> bool {
+    create_db(input, path)
+}
+
+fn authenticate_submitted(input: SharedString, path: String) -> bool {
+    on_authenticate(input, path)
+}
 
 fn get_user_db_path_cross_platform(db_filename: &str) -> Option<PathBuf> {
     if let Some(mut home) = home_dir() {
@@ -138,13 +121,52 @@ fn run(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-//TODO: Have this return the ui and have it execute ui.run in the run function of this main program
 fn get_initial_ui(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
     let ui = EntryWindow::new()?;
 
     if db_exist {
         ui.set_current_page(Page::Authenticate);
     }
+    else{
+        ui.set_current_page(Page::CreateDb);
+    }
+
+    let ui_weak = ui.as_weak();
+
+    // Clone for the first closure so originals remain available
+    let path_for_create = path.clone();
+    let ui_weak_for_create = ui_weak.clone();
+
+    ui.on_create_db_submitted(move |input| {
+        let is_created_db_success = create_db_submitted(input, path_for_create.clone());
+
+        if is_created_db_success == false{
+            println!("Database created Failed!");
+            return;
+        }
+        if let Some(ui) = ui_weak_for_create.upgrade(){
+            println!("Database created Successfully!");
+            ui.set_current_page(Page::Authenticate);
+        }
+    });
+
+    // Clone ui_weak again for the second closure (optional but clearer)
+    let ui_weak_for_auth = ui_weak.clone();
+
+    ui.on_authenticate_submitted(move |authenticate| {
+        let is_authenticate_success = authenticate_submitted(authenticate, path.clone());
+
+        if is_authenticate_success == false{
+            println!("Authentication Failed!");
+            return;
+        }
+        if let Some(ui) = ui_weak_for_auth.upgrade(){
+            println!("Authentication Success");
+            ui.set_current_page(Page::Passlock);
+        }
+    });
+
+    ui.on_generate_password(|| SharedString::from(CryptEngine::generate_random_password()));
 
     ui.run()?;
     Ok(())

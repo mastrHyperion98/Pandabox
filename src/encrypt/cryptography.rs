@@ -6,6 +6,7 @@ use chacha20poly1305::aead::generic_array::GenericArray;
 use chacha20poly1305::aead::Aead;
 use chacha20poly1305::consts::U12;
 use chacha20poly1305::{ChaCha20Poly1305, Error as ChaChaError, Key, KeyInit, Nonce};
+use rand::Rng;
 use rand_core::RngCore;
 
 const SALT_LENGTH: usize = 32;
@@ -83,5 +84,18 @@ impl CryptEngine {
         let mut salt = vec![0u8; SALT_LENGTH];
         OsRng.fill_bytes(&mut salt);
         salt
+    }
+    
+    pub fn generate_random_password() -> String {
+        // Implement a random 32 character long password containing uppercase, lowercase, numbers, and special characters
+        let mut rng = rand::rng();
+        let password: String = (0..32)
+            .map(|_| {
+                let charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*_+";
+                charset.chars().nth(rng.random_range(0..charset.len())).unwrap()
+            })
+            .collect();
+        
+        password
     }
 }
