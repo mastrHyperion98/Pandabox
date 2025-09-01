@@ -17,7 +17,9 @@ export component ServiceForm {
     in-out property <string> email;
     in-out property <string> username;
     in-out property <string> password;
+    in-out property <string> confirm-password;
     in-out property <string> notes;
+    private property <bool> passwords-match: root.password == root.confirm-password;
     
     callback save-pressed(ServiceData);
     callback cancel-pressed();
@@ -59,6 +61,15 @@ export component ServiceForm {
             input-type: InputType.password;
         }
 
+        Text { 
+            text: "Confirm Password";
+            color: root.passwords-match ? #FFFFFF : #ff0000;
+        }
+        LineEdit { 
+            text <=> root.confirm-password;
+            input-type: InputType.password;
+        }
+
         Button {
             text: "Generate Password";
             clicked => {
@@ -82,13 +93,15 @@ export component ServiceForm {
                 text: root.title;
                 primary: true;
                 clicked => { 
-                    root.save-pressed({
-                        service: root.service-name,
-                        email: root.email,
-                        username: root.username,
-                        password: root.password,
-                        notes: root.notes
-                    });
+                    if (root.passwords-match) {
+                        root.save-pressed({
+                            service: root.service-name,
+                            email: root.email,
+                            username: root.username,
+                            password: root.password,
+                            notes: root.notes
+                        });
+                    }
                 }
             }
         }

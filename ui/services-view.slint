@@ -108,6 +108,8 @@ export component ServiceView{
 
           generate-password() => {
               self.password = generate_password();
+              self.confirm-password = self.password;
+              
           }
       }
   }
