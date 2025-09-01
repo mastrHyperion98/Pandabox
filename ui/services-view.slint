@@ -25,31 +25,27 @@ export global AppData {
     ];
 
     // Callback to trigger adding a row from the UI
-    callback add-new-row();
+    callback add-new-row(ServiceData);
 }
 
-export struct NewEntryData {
-    service: string,
-    email: string,
-    username: string,
-    password: string,
-    notes: string,
+export enum View {
+    Form,
+    Table
 }
-
 
 export component ServiceView{
     min-width: 1280px;
     min-height: 720px;
     
     // Form state management
-    in-out property <bool> show-form: false;
+    in-out property <View> show-state: View.Table;
     in-out property <string> form-mode: "Add New Entry";
     in-out property <ServiceData> current-service-data;
     
     callback generate_password()->string;
 
   // Main content area
-  VerticalLayout {
+  if root.show-state == View.Table: VerticalLayout {
       padding: 25px;
       spacing: 50px;
       
@@ -60,7 +56,7 @@ export component ServiceView{
               clicked => {
                   root.form-mode = "Add";
                   root.current-service-data = {};
-                  root.show-form = true;
+                  root.show-state = View.Form;
                   }
               }
           Button {
@@ -68,7 +64,7 @@ export component ServiceView{
               clicked => {
                   root.form-mode = "Edit";
                   // TODO: Set current-service-data from selected row
-                  root.show-form = true;
+                  root.show-state = View.Form;
               }
           }
           Button {text: "Delete";}
@@ -90,16 +86,9 @@ export component ServiceView{
   }
   
   // Slide-in form (moved outside layout)
-  if root.show-form: Rectangle {
-      width: 400px;
+  if root.show-state == View.Form: Rectangle {
+      width: parent.width;
       height: parent.height;
-      x: root.show-form ? parent.width - self.width : parent.width;
-      y: 0;
-      z: 100;
-      background: #2d2d2d; // Dark background to match your UI theme
-      border-radius: 8px;
-      drop-shadow-blur: 10px;
-      drop-shadow-color: #00000040;
 
       ServiceForm {
           width: parent.width;
@@ -109,11 +98,12 @@ export component ServiceView{
 
           save-pressed(data) => {
               // Handle save logic here
-              root.show-form = false;
+              AppData.add-new-row(data);
+              root.show-state = View.Table;
           }
 
           cancel-pressed() => {
-              root.show-form = false;
+              root.show-state = View.Table;
           }
 
           generate-password() => {
