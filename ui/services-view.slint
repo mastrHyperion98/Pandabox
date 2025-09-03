@@ -23,14 +23,16 @@ export global AppData {
             { text: "2026-01-01T10:12:23" },
         ],
     ];
-
-    // Callback to trigger adding a row from the UI
-    callback add-new-row(ServiceData);
 }
 
 export enum View {
     Form,
     Table
+}
+
+export enum FormMode {
+    Add,
+    Edit
 }
 
 export component ServiceView{
@@ -39,36 +41,43 @@ export component ServiceView{
     
     // Form state management
     in-out property <View> show-state: View.Table;
-    in-out property <string> form-mode: "Add New Entry";
+    in-out property <FormMode> form-mode: FormMode.Add;
     in-out property <ServiceData> current-service-data;
+    property <int> current-row: -1;
+    
+    // Convert FormMode enum to string for display
+    property <string> form-mode-text: root.form-mode == FormMode.Add ? "Add" : "Edit";
     
     callback generate_password()->string;
+    callback save_service(ServiceData, string, int);
 
   // Main content area
   if root.show-state == View.Table: VerticalLayout {
       padding: 25px;
       spacing: 50px;
-      
+
       HorizontalLayout {
           spacing: 25px;
           Button {
               text: "Add"; primary: true;
               clicked => {
-                  root.form-mode = "Add";
+                  root.form-mode = FormMode.Add;
                   root.current-service-data = {};
                   root.show-state = View.Form;
                   }
               }
           Button {
               text: "Edit";
+              // Disable Edit button if no row is selected
+              enabled: root.current-row != -1;
               clicked => {
-                  root.form-mode = "Edit";
-                  // TODO: Set current-service-data from selected row
+                  root.form-mode =  FormMode.Edit;
+                  // The data is already set by the table's current-row-changed callback.
                   root.show-state = View.Form;
               }
           }
-          Button {text: "Delete";}
-          Button {text: "Duplicate & Refresh";}
+          Button {text: "Delete"; /* TODO: Add clicked handler to delete item */ }
+          Button {text: "Duplicate & Refresh"; /* TODO: Add clicked handler for this action */ }
       }
 
       StandardTableView {
@@ -80,11 +89,20 @@ export component ServiceView{
               { title: "Description", min_width: 100px },
               { title: "Last Update",  min-width: 150px, horizontal_stretch: 0},
           ];
-          // figure out how to dynamically set this data
           rows: AppData.table-rows;
+          current-row-changed(current-row) => {
+             root.current-row = current-row;
+             root.current-service-data = {
+               service: AppData.table-rows[current-row][0].text,
+               email: AppData.table-rows[current-row][1].text,
+               username: AppData.table-rows[current-row][2].text,
+               password: AppData.table-rows[current-row][3].text,
+               notes: AppData.table-rows[current-row][4].text,
+           };
+          }
       }
   }
-  
+
   // Slide-in form (moved outside layout)
   if root.show-state == View.Form: Rectangle {
       width: parent.width;
@@ -93,12 +111,18 @@ export component ServiceView{
       ServiceForm {
           width: parent.width;
           height: parent.height;
-          title: root.form-mode;
+           title: root.form-mode-text;
           service-data: root.current-service-data;
+          service-name: root.current-service-data.service;
+          email: root.current-service-data.email;
+          username: root.current-service-data.username;
+          password: root.current-service-data.password;
+          confirm-password: root.current-service-data.password;
+          notes: root.current-service-data.notes;
 
           save-pressed(data) => {
               // Handle save logic here
-              AppData.add-new-row(data);
+              root.save_service(data, root.form-mode-text, root.current-row);
               root.show-state = View.Table;
           }
 

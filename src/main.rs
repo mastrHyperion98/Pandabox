@@ -3,7 +3,7 @@
 
 use crate::encrypt::cryptography::CryptEngine;
 use dirs::home_dir;
-use slint::{ SharedString};
+use slint::{Model, ModelRc, SharedString, StandardListViewItem, VecModel};
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
@@ -62,6 +62,65 @@ fn create_db(data: SharedString, path: String) -> bool {
     }
 
     status
+}
+
+fn handle_save_service(
+    form_mode: SharedString,
+    current_index: i32,
+    service: SharedString,
+    email: SharedString,
+    username: SharedString,
+    password: SharedString,
+    notes: SharedString,
+    ui_weak: slint::Weak<EntryWindow>
+) {
+    if service.is_empty() || email.is_empty() || username.is_empty() || password.is_empty(){
+        return;
+    }
+    
+    if let Some(ui) = ui_weak.upgrade() {
+        println!("Form mode: {}", form_mode);
+        println!("Current index: {}", current_index);
+        if form_mode.as_str() == "Add" {
+            insert_entry(&service, &email, username, password, notes, ui);
+        }else{
+            update_entry(current_index, &service, &email, username, password, notes, ui);
+        }
+        
+        println!("Service saved: {} - {}", service, email);
+    }
+}
+
+fn update_entry(index: i32, service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
+    return;
+}
+
+fn insert_entry(service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
+    // Get current timestamp
+    let table_model_handle = ui.global::<AppData>().get_table_rows();
+    // This is the key: We "downcast" the generic model handle to the specific
+    // type we know it is: a VecModel that holds rows.
+    // This "unlocks" the .push() method.
+    if let Some(vec_model) = table_model_handle.as_any().downcast_ref::<VecModel<ModelRc<StandardListViewItem>>>() {
+        // --- Your code to create the new row is perfect ---
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        let row_data: Vec<slint::StandardListViewItem> = vec![
+            StandardListViewItem::from(service.as_str()),
+            StandardListViewItem::from(email.as_str()),
+            StandardListViewItem::from(username.as_str()),
+            StandardListViewItem::from(password.as_str()),
+            StandardListViewItem::from(notes.as_str()),
+            StandardListViewItem::from(now.as_str()),
+        ];
+
+        let new_row = ModelRc::new(VecModel::from(row_data));
+        // Now that we have the concrete `vec_model`, we can push the new row directly.
+        // The UI will update automatically.
+        vec_model.push(new_row);
+    } else {
+        // This will print an error to your console if the type isn't what we expect.
+        println!("Error: Could not access the table model as a VecModel.");
+    }
 }
 
 fn create_db_submitted(input: SharedString, path: String) -> bool {
@@ -167,6 +226,20 @@ fn get_initial_ui(db_exist: bool, path: String) -> Result<(), Box<dyn Error>> {
     });
 
     ui.on_generate_password(|| SharedString::from(CryptEngine::generate_random_password()));
+
+    let ui_weak_for_save = ui_weak.clone();
+    ui.on_save_service(move |data, form, index| {
+        handle_save_service(
+            form,
+            index,
+            data.service,
+            data.email,
+            data.username,
+            data.password,
+            data.notes,
+            ui_weak_for_save.clone()
+        );
+    });
 
     ui.run()?;
     Ok(())
