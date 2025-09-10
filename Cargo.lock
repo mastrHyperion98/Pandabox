@@ -3,12 +3,13 @@
 version = 4
 
 [[package]]
-name = "RustPassLock"
+name = "Pandabox"
 version = "0.1.0"
 dependencies = [
  "argon2",
  "base64",
  "chacha20poly1305",
+ "chrono",
  "dirs",
  "rand 0.9.1",
  "rand_core 0.6.4",

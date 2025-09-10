@@ -1,6 +1,8 @@
 import { Button } from "std-widgets.slint";
 import { AuthView } from "auth-view.slint";
-import {ServiceView} from "services-view.slint";
+import { ServiceView, AppData, FormMode} from "services-view.slint";
+import { ServiceData } from "service-form.slint";
+
 
 export enum Page {
     CreateDb,
@@ -8,18 +10,22 @@ export enum Page {
     Passlock
 }
 
+export { AppData }
+
 export component EntryWindow inherits Window {
     callback create_db_submitted(string);
     callback authenticate_submitted(string);
     callback generate_password()->string;
+    callback save_service(ServiceData, string, int);
 
     title: "PassLock";
     min-width: 1280px;
     min-height: 720px;
-    icon: @image-url("../resources/ico.png");
+    full-screen: false;
+    default-font-size: 12px;
+    icon: @image-url("../resources/panda.png");
 
     in-out property <Page> current_page: Page.CreateDb;
-
 
     if current_page == Page.CreateDb: AuthView {
         button_text: "Create Database";
@@ -33,5 +39,6 @@ export component EntryWindow inherits Window {
     }
     if current_page == Page.Passlock:  ServiceView{
         generate_password() => { root.generate_password() }
+        save_service(data, mode, row) => { root.save_service(data, mode, row) }
     }
 }
