@@ -1,12 +1,14 @@
+use std::rc::Rc;
 use rusqlite::{Connection, Error, Result};
 
+#[derive(Clone)]
 pub struct DatabaseManager {
-    connection: Connection,
+    connection: Rc<Connection>,  // Wrap Connection in Rc
 }
 
 impl DatabaseManager {
     pub fn new(database_path: &str) -> Result<Self> {
-        let connection = Connection::open(database_path).unwrap();
+        let connection = Rc::new(Connection::open(database_path).unwrap());
         Ok(DatabaseManager { connection })
     }
 
@@ -35,7 +37,18 @@ impl DatabaseManager {
 
         Ok(())
     }
+    
+    pub fn check_master_table(&self) -> Result<bool> {
+        let mut stmt = self.connection.prepare("SELECT * FROM master_table LIMIT 1")?;
+        let mut rows = stmt.query([])?;
 
+        if let Some(_) = rows.next()? {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+    
     fn insert_master_table(
         &self,
         salt: &Vec<u8>,
