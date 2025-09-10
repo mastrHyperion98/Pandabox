@@ -21,7 +21,9 @@ export component EntryWindow inherits Window {
     title: "PassLock";
     min-width: 1280px;
     min-height: 720px;
-    icon: @image-url("../resources/ico.png");
+    full-screen: false;
+    default-font-size: 12px;
+    icon: @image-url("../resources/panda.png");
 
     in-out property <Page> current_page: Page.CreateDb;
 

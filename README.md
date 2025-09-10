@@ -1,6 +1,6 @@
 # About
 
-Passlock is a Java Password manager I wrote while in Uni. The software has significant short comings and this project is an attempt to learn Rust by overhauling Passlock. The primary components with revolve around the argo2, chacha20poly1305 and Slint frameworks. 
+Pandabox is a Java Password manager I wrote while in Uni. The software has significant short comings and this project is an attempt to learn Rust by overhauling Pandabox. The primary components with revolve around the argo2, chacha20poly1305 and Slint frameworks. 
 
 As per the original project a local sqlite 3 database is used to stored the encrypted data. 
 
@@ -17,8 +17,8 @@ a neat feature that would be fantastic to have in this version.
 2. Download and extract the [ZIP archive of this repository](https://github.com/slint-ui/slint-rust-template/archive/refs/heads/main.zip).
 3. Rename the extracted directory and change into it:
     ```
-    mv RustPassLock
-    cd RustPassLock  
+    mv Pandabox
+    cd Pandabox  
     ```
 4. Build with `cargo`:
     ```
@@ -33,3 +33,6 @@ We recommend using an IDE for development, along with our [LSP-based IDE integra
 
 ## Next Steps
 
+## Attributions
+
+Icons provided by Anastassiya Motokhova over at [flaticon.com](https://www.flaticon.com/authors/anastassiya-motokhova) 
