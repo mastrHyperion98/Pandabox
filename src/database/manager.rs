@@ -9,10 +9,11 @@ pub struct DatabaseManager {
 impl DatabaseManager {
     pub fn new(database_path: &str) -> Result<Self> {
         let connection = Rc::new(Connection::open(database_path).unwrap());
+        match create_record_table()
         Ok(DatabaseManager { connection })
     }
 
-    pub fn create_master_table(
+    fn create_master_table(
         &self,
         salt: &Vec<u8>,
         encrypted_master: &Vec<u8>,
@@ -37,7 +38,27 @@ impl DatabaseManager {
 
         Ok(())
     }
-    
+
+    fn create_record_table(&self) -> Result<()> {
+        println!("Creating record table...");
+
+        match self.connection.execute(
+            "CREATE TABLE IF NOT EXISTS record_table (\
+        id INTEGER PRIMARY KEY AUTOINCREMENT,\
+        service_name TEXT NOT NULL,\
+        email TEXT NOT NULL,\
+        username TEXT NOT NULL,\
+        password TEXT NOT NULL,\
+        confirm_password TEXT NOT NULL,\
+        notes TEXT NOT NULL);",
+            [],
+        ){
+            Ok(_) => println!("Record table created successfully"),
+            Err(e) => eprintln!("Error creating record table: {}", e),
+        };
+
+        Ok(())
+    }
     pub fn check_master_table(&self) -> Result<bool> {
         let mut stmt = self.connection.prepare("SELECT * FROM master_table LIMIT 1")?;
         let mut rows = stmt.query([])?;
