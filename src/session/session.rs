@@ -17,4 +17,8 @@ impl Session {
             crypto_engine: crypto_engine,
         }
     }
+
+    pub fn get_key(&self) -> &Vec<u8> {
+        &self.key
+    }
 }

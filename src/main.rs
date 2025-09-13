@@ -8,10 +8,14 @@ use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
+use zeroize::Zeroize;
 use crate::database::manager::DatabaseManager;
+use crate::session::session::Session;
 
 mod database;
 mod encrypt;
+mod session;
+
 slint::include_modules!();
 
 const APP_NAME: &str = "Pandabox";
@@ -20,15 +24,21 @@ const APP_NAME: &str = "Pandabox";
 fn on_authenticate(
     data: SharedString,
     manager: Rc<DatabaseManager>
-) -> bool {
+) -> (bool, Option<Session>) {
     // Now we create the database
-    let (key, nonce, salt) = manager.get_master_record().unwrap();
+    let (mut key, mut nonce, mut salt) = manager.get_master_record().unwrap();
 
     let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
     let mut status = false;
+    let mut session = None;
     match engine.decrypt_master_key(nonce.as_slice(), key.as_ref()) {
-        Ok(_) => {
+        Ok(decrypted_key) => {
             println!("Master key successfully decrypted");
+            //data.zeroize();
+            key.zeroize();
+            nonce.zeroize();
+            salt.zeroize();
+            session = Some(Session::new(decrypted_key, engine.clone()));
             status=true;
         }
         Err(_) => {
@@ -36,7 +46,7 @@ fn on_authenticate(
         }
     };
 
-    status
+    (status, session)
 
 }
 
@@ -71,23 +81,38 @@ where
 
 fn create_db(manager: Rc<DatabaseManager>, data: SharedString) -> bool {
     // Before creating the database perhaps we should create the salt, nonce and encyrption key
-    let salt = CryptEngine::generate_salt();
+    let mut salt = CryptEngine::generate_salt();
     let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
-    let master_key = CryptEngine::generate_master_key();
-    let (nonce, ciphertext) = engine.encrypt_master_key(master_key.as_ref()).unwrap();
+    let mut master_key = CryptEngine::generate_master_key();
+    let (mut nonce, mut ciphertext) = engine.encrypt_master_key(master_key.as_ref()).unwrap();
 
     println!("Creating DB");
     let mut status = false;
     match manager.create_master_table(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
         Ok(_) => {
             println!("Created Master Table");
-            status=true;
+            // Securely wipe sensitive data from memory now that it's committed to database
+            salt.zeroize();
+            master_key.zeroize();
+            nonce.zeroize();
+            ciphertext .zeroize();
+            match manager.create_record_table() {
+                Ok(_) => {
+                    println!("Created Record Table");
+                    status=true;
+                }
+                Err(_) => {
+                    println!("Failed to create Record Table");
+                }
+            };
         }
         Err(_) => {
+            // Securely wipe sensitive data from memory
+            salt.zeroize();
+            master_key.zeroize();
             println!("Failed to create Master Table");
         }
     }
-
     status
 }
 
@@ -105,7 +130,7 @@ fn handle_save_service(
     if service.is_empty() || email.is_empty() || username.is_empty() || password.is_empty(){
         return;
     }
-    
+
     if let Some(ui) = ui_weak.upgrade() {
         println!("Form mode: {}", form_mode);
         println!("Current index: {}", current_index);
@@ -114,7 +139,7 @@ fn handle_save_service(
         }else{
             update_entry(index, &service, &email, username, password, notes, ui);
         }
-        
+
         println!("Service saved: {} - {}", service, email);
     }
 }
@@ -130,9 +155,10 @@ fn update_entry(index: usize, service: &SharedString, email: &SharedString, user
         StandardListViewItem::from(notes.as_str()),
         StandardListViewItem::from(now.as_str()),
     ]));
-    
+
+    // TODO: UPDATE DATABASE
+    // TODO: IF SUCCESS SET ROW DATA VALUE
     table_model_handle.set_row_data(index, row_data);
-    // TODO: WRITE TO DATABASE
 }
 
 fn insert_entry(service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
@@ -152,9 +178,9 @@ fn insert_entry(service: &SharedString, email: &SharedString, username: SharedSt
             StandardListViewItem::from(notes.as_str()),
             StandardListViewItem::from(now.as_str()),
         ];
-        
-        // TODO: WRITE TO DATABASE
 
+        // TODO: WRITE TO DATABASE
+        // TODO: IF SUCCESS ADD TO I
         let new_row = ModelRc::new(VecModel::from(row_data));
         // Now that we have the concrete `vec_model`, we can push the new row directly.
         // The UI will update automatically.
@@ -165,11 +191,20 @@ fn insert_entry(service: &SharedString, email: &SharedString, username: SharedSt
     }
 }
 
+fn delete_entry(index: usize, ui: EntryWindow) {
+    // TODO: DELETE FROM DATABASE
+    // TODO: IF SUCCESS REMOVE FROM UI
+    let table_model_handle = ui.global::<AppData>().get_table_rows();
+    if let Some(vec_model) = table_model_handle.as_any().downcast_ref::<VecModel<ModelRc<StandardListViewItem>>>() {
+        vec_model.remove(index);
+    }
+}
+
 fn create_db_submitted(input: SharedString, database_manager: Rc<DatabaseManager>) -> bool {
     create_db(database_manager, input)
 }
 
-fn authenticate_submitted(input: SharedString, database_manager: Rc<DatabaseManager>) -> bool {
+fn authenticate_submitted(input: SharedString, database_manager: Rc<DatabaseManager>) -> (bool, Option<Session>) {
     on_authenticate(input, database_manager)
 }
 
@@ -197,7 +232,7 @@ fn init_manager() -> (bool, Option<Rc<DatabaseManager>>) {
         }
         let path_str = db_path.to_str().unwrap_or_default().to_owned();
         let manager = Rc::new(DatabaseManager::new(path_str.as_str()).unwrap());
-        
+
         println!("Database file exists at: {}", db_path.display());
         (manager.check_master_table().is_ok(), Some(manager))
     } else {
@@ -240,12 +275,13 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
         Page::Authenticate,
     ));
 
-    ui.on_authenticate_submitted(make_db_callback(
-        manager.clone(),
-        ui_weak.clone(),
-        authenticate_submitted,
-        Page::Passlock,
-    ));
+    let ui_weak_on_authenticate_submitted = ui.as_weak();
+    ui.on_authenticate_submitted(move |input| {
+        let (state, session) = authenticate_submitted(input, manager.clone());
+        if state {
+            ui_weak_on_authenticate_submitted.upgrade().unwrap().set_current_page(Page::Passlock);
+        }
+    });
 
 
     ui.on_generate_password(|| SharedString::from(CryptEngine::generate_random_password()));
