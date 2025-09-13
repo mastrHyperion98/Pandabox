@@ -13,6 +13,7 @@ use zeroize::Zeroize;
 const SALT_LENGTH: usize = 32;
 const PASSWORD_LENGTH: usize = 32;
 
+#[derive(Clone)]
 pub struct CryptEngine {
     key: Vec<u8>, // Store the Argon2 output (not the ChaCha20 key directly)
 }
@@ -79,6 +80,14 @@ impl CryptEngine {
         let cipher = ChaCha20Poly1305::new(key);
         let plaintext = cipher.decrypt(&nonce, ciphertext.as_ref())?;
         Ok(plaintext)
+    }
+
+    pub fn encrypt_record(&self, record: &[u8]) -> Result<Vec<u8>, ChaChaError> {
+        let key = Key::from_slice(self.key.as_slice()); // Derive key from stored hash
+        let nonce = Self::generate_nonce();
+        let cipher = ChaCha20Poly1305::new(key);
+        let ciphertext = cipher.encrypt(&nonce, record.as_ref())?;
+        Ok(ciphertext)
     }
 
     // Helper function to generate a random nonce

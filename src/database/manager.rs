@@ -9,11 +9,10 @@ pub struct DatabaseManager {
 impl DatabaseManager {
     pub fn new(database_path: &str) -> Result<Self> {
         let connection = Rc::new(Connection::open(database_path).unwrap());
-        match create_record_table()
         Ok(DatabaseManager { connection })
     }
 
-    fn create_master_table(
+    pub  fn create_master_table(
         &self,
         salt: &Vec<u8>,
         encrypted_master: &Vec<u8>,
@@ -39,7 +38,7 @@ impl DatabaseManager {
         Ok(())
     }
 
-    fn create_record_table(&self) -> Result<()> {
+    pub fn create_record_table(&self) -> Result<()> {
         println!("Creating record table...");
 
         match self.connection.execute(
