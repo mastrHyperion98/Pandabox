@@ -2,7 +2,7 @@ import { Button } from "std-widgets.slint";
 import { AuthView } from "auth-view.slint";
 import { ServiceView, AppData, FormMode} from "services-view.slint";
 import { ServiceData } from "service-form.slint";
-
+import "./fonts/C059-Roman.otf";
 
 export enum Page {
     CreateDb,
@@ -22,9 +22,9 @@ export component EntryWindow inherits Window {
     min-width: 1280px;
     min-height: 720px;
     full-screen: false;
-    default-font-size: 12px;
+    default-font-size: 16px;
+    default-font-family: "C059";
     icon: @image-url("../resources/panda.png");
-
     in-out property <Page> current_page: Page.CreateDb;
 
     if current_page == Page.CreateDb: AuthView {
