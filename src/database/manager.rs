@@ -1,115 +1,123 @@
-use std::rc::Rc;
-use rusqlite::{Connection, Error, Result};
+use std::path::PathBuf;
+use std::fs;
+use std::env;
+use diesel::prelude::*;
+use diesel::sqlite::SqliteConnection;
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use dotenvy::dotenv;
+use diesel::associations::HasTable;
+
+use crate::database::models::{MasterRecord, NewMasterRecord, NewRecord, Record};
+use crate::database::schema::{master_table, records};
+
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 #[derive(Clone)]
 pub struct DatabaseManager {
-    connection: Rc<Connection>,  // Wrap Connection in Rc
+    database_url: String,
 }
 
 impl DatabaseManager {
-    pub fn new(database_path: &str) -> Result<Self> {
-        let connection = Rc::new(Connection::open(database_path).unwrap());
-        Ok(DatabaseManager { connection })
+    pub fn new() -> Self {
+        dotenv().ok();
+        
+        // Get the home directory and create the application directory
+        let home_dir = env::var("HOME")
+            .or_else(|_| env::var("USERPROFILE"))
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."));
+            
+        let app_dir = home_dir.join("Pandabox");
+        fs::create_dir_all(&app_dir).expect("Failed to create application directory");
+        
+        // Set the database path
+        let db_path = app_dir.join("pandabox.db");
+        let database_url = db_path.to_str().expect("Invalid database path").to_string();
+        
+        // Set the DATABASE_URL environment variable for Diesel CLI
+        std::env::set_var("DATABASE_URL", &database_url);
+        
+        // Create or connect to the database
+        let mut connection = SqliteConnection::establish(&database_url)
+            .unwrap_or_else(|e| panic!("Error connecting to {}: {}", database_url, e));
+
+        // Run migrations
+        connection
+            .run_pending_migrations(MIGRATIONS)
+            .expect("Failed to run migrations");
+
+        DatabaseManager { database_url }
     }
 
-    pub  fn create_master_table(
+    fn establish_connection(&self) -> SqliteConnection {
+        SqliteConnection::establish(&self.database_url)
+            .unwrap_or_else(|_| panic!("Error connecting to {}", self.database_url))
+    }
+
+    pub fn create_master_record(
         &self,
-        salt: &Vec<u8>,
-        encrypted_master: &Vec<u8>,
-        nonce: &Vec<u8>,
-    ) -> Result<()> {
-        println!("Creating master table...");
-        self.connection.execute(
-            "CREATE TABLE IF NOT EXISTS master_table (\
-        id INTEGER PRIMARY KEY AUTOINCREMENT,\
-        encrypted_master_key BLOB NOT NULL,\
-        nonce BLOB NOT NULL,\
-        salt BLOB NOT NULL);",
-            [],
-        )?;
-
-        println!("Created master table...");
-
-        match self.insert_master_table(salt, encrypted_master, nonce) {
-            Ok(_) => println!("Insertion was successful"),
-            Err(e) => eprintln!("Error during insertion: {}", e),
+        salt: &[u8],
+        encrypted_master: &[u8],
+        nonce: &[u8],
+    ) -> QueryResult<usize> {
+        let mut connection = self.establish_connection();
+        let new_master_record = NewMasterRecord {
+            salt,
+            encrypted_master_key: encrypted_master,
+            nonce,
         };
 
-        Ok(())
+        diesel::insert_into(master_table::dsl::master_table)
+            .values(&new_master_record)
+            .execute(&mut connection)
     }
 
-    pub fn create_record_table(&self) -> Result<()> {
-        println!("Creating record table...");
+    pub fn check_master_table_exists(&self) -> QueryResult<bool> {
+        use crate::database::schema::master_table::dsl::*;
 
-        match self.connection.execute(
-            "CREATE TABLE IF NOT EXISTS records (\
-        id INTEGER PRIMARY KEY AUTOINCREMENT,\
-        service TEXT NOT NULL,\
-        email TEXT NOT NULL,\
-        username TEXT NOT NULL,\
-        password TEXT NOT NULL,\
-        notes TEXT NOT NULL);",
-            [],
-        ){
-            Ok(_) => println!("Record table created successfully"),
-            Err(e) => eprintln!("Error creating record table: {}", e),
-        };
-
-        Ok(())
-    }
-    pub fn check_master_table(&self) -> Result<bool> {
-        let mut stmt = self.connection.prepare("SELECT * FROM master_table LIMIT 1")?;
-        let mut rows = stmt.query([])?;
-
-        if let Some(_) = rows.next()? {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-    
-    fn insert_master_table(
-        &self,
-        salt: &Vec<u8>,
-        encrypted_master: &Vec<u8>,
-        nonce: &Vec<u8>,
-    ) -> Result<()> {
-        self.connection.execute(
-            "INSERT INTO master_table (encrypted_master_key, nonce, salt) VALUES (?, ?, ?)",
-            [encrypted_master, nonce, salt],
-        )?;
-
-        Ok(())
+        let mut connection = self.establish_connection();
+        let count = master_table
+            .limit(1)
+            .count()
+            .get_result::<i64>(&mut connection)?;
+        Ok(count > 0)
     }
 
-    pub fn get_master_record(&self) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), Error> {
-        let mut stmt = self
-            .connection
-            .prepare("SELECT encrypted_master_key, nonce, salt FROM master_table LIMIT 1")?;
-        let mut rows = stmt.query([])?;
+    pub fn get_master_record(&self) -> QueryResult<MasterRecord> {
+        use crate::database::schema::master_table::dsl::*;
 
-        if let Some(row) = rows.next()? {
-            let encrypted_master_key: Vec<u8> = row.get(0)?;
-            let nonce: Vec<u8> = row.get(1)?;
-            let salt: Vec<u8> = row.get(2)?;
-            Ok((encrypted_master_key, nonce, salt))
-        } else {
-            Err(Error::QueryReturnedNoRows) // Assuming you have a custom Error::QueryReturnedNoRows
-        }
+        let mut connection = self.establish_connection();
+        master_table.first(&mut connection)
     }
 
     pub fn insert_entry(
         &self,
-        service: &str,
-        email: &str,
-        username: &str,
-        password: &str,
-        notes: &str,
-    ) -> Result<()> {
-        self.connection.execute(
-            "INSERT INTO records (service, email, username, password, notes) VALUES (?1, ?2, ?3, ?4, ?5)",
-            (service, email, username, password, notes),
-        )?;
-        Ok(())
+        service_name: &str,
+        email_str: &str,
+        username_str: &str,
+        password_str: &str,
+        notes_str: &str,
+    ) -> QueryResult<usize> {
+        use crate::database::schema::records::dsl::*;
+
+        let mut connection = self.establish_connection();
+        let new_record = NewRecord {
+            service: service_name,
+            email: email_str,
+            username: username_str,
+            password: password_str,
+            notes: notes_str,
+        };
+
+        diesel::insert_into(records)
+            .values(&new_record)
+            .execute(&mut connection)
+    }
+    
+    pub fn get_all_records(&self) -> QueryResult<Vec<Record>> {
+        use crate::database::schema::records::dsl::*;
+        
+        let mut connection = self.establish_connection();
+        records.load::<Record>(&mut connection)
     }
 }

@@ -8,7 +8,9 @@ edition = "2021"
 [dependencies]
 slint = "1.8.0"
 dirs = "6.0.0"
-rusqlite = { version = "0.35", features = ["bundled"] }
+diesel = { version = "2.2.0", features = ["sqlite"] }
+diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
+dotenvy = "0.15.7"
 argon2 =  "0.5.3"
 rand_core = { version = "0.6", features = ["std"] }
 rand = { version = "0.9.1", features = ["os_rng"] }

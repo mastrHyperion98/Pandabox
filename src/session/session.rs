@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use base64::Engine;
+use diesel::prelude::*;
 use slint::SharedString;
 use crate::database::manager::DatabaseManager;
 use crate::encrypt::cryptography::CryptEngine;
@@ -26,6 +27,11 @@ impl Session {
 
     fn get_key(&self) -> &Vec<u8> {
         &self.key
+    }
+    
+    /// Get all records from the database
+    pub fn get_all_records(&self) -> QueryResult<Vec<crate::database::models::Record>> {
+        self.database_manager.get_all_records()
     }
 
     pub fn insert_entry(&self, service: &SharedString, email: &SharedString, username: &SharedString, password: &SharedString, notes: &SharedString) -> bool

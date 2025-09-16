@@ -6,22 +6,6 @@ import { ServiceForm, ServiceData } from "service-form.slint";
 // Define a global property that will hold our table data
 export global AppData {
     in-out property <[[StandardListViewItem]]> table-rows: [
-        [
-            { text: "Netflix" },
-            { text: "email_abc@def.com" },
-            { text: "NotARealUser" },
-            { text: "NotAPassword" },
-            { text: "Netflix & Chill creds" },
-            { text: "2026-01-01T10:12:23" },
-        ],
-        [
-            { text: "NotLastNetflix" },
-            { text: "email_abc@def.com" },
-            { text: "NotARealUser" },
-            { text: "NotAPassword" },
-            { text: "Netfli2 & Chill creds" },
-            { text: "2026-01-01T10:12:23" },
-        ],
     ];
 }
 
@@ -50,6 +34,7 @@ export component ServiceView{
     
     callback generate_password()->string;
     callback save_service(ServiceData, string, int);
+    callback delete_entry(int);
 
   // Main content area
   if root.show-state == View.Table: VerticalLayout {
@@ -76,7 +61,14 @@ export component ServiceView{
                   root.show-state = View.Form;
               }
           }
-          Button {text: "Delete"; /* TODO: Add clicked handler to delete item */ }
+          Button {
+              text: "Delete";
+              // Disable Delete button if no row is selected
+              enabled: root.current-row != -1;
+              clicked => {
+                  root.delete_entry(root.current-row);
+              }
+          }
           Button {text: "Duplicate & Refresh"; /* TODO: Add clicked handler for this action */ }
       }
 

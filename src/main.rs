@@ -2,11 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use crate::encrypt::cryptography::CryptEngine;
-use dirs::home_dir;
 use slint::{Model, ModelRc, SharedString, StandardListViewItem, VecModel, Weak};
 use std::error::Error;
-use std::fs;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use zeroize::Zeroize;
@@ -26,29 +23,31 @@ fn on_authenticate(
     data: SharedString,
     manager: Rc<DatabaseManager>
 ) -> (bool, Option<Session>) {
-    // Now we create the database
-    let (mut key, mut nonce, mut salt) = manager.get_master_record().unwrap();
-
-    let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
-    let mut status = false;
-    let mut session = None;
-    match engine.decrypt_master_key(nonce.as_slice(), key.as_ref()) {
-        Ok(decrypted_key) => {
-            println!("Master key successfully decrypted");
-            //data.zeroize();
-            key.zeroize();
-            nonce.zeroize();
-            salt.zeroize();
-            session = Some(Session::new(decrypted_key, engine.clone(), manager.clone()));
-            status=true;
+    match manager.get_master_record() {
+        Ok(mut master_record) => {
+            let engine = CryptEngine::new(data.as_str(), &master_record.salt).unwrap();
+            let mut status = false;
+            let mut session = None;
+            match engine.decrypt_master_key(&master_record.nonce, &master_record.encrypted_master_key) {
+                Ok(decrypted_key) => {
+                    println!("Master key successfully decrypted");
+                    master_record.encrypted_master_key.zeroize();
+                    master_record.nonce.zeroize();
+                    master_record.salt.zeroize();
+                    session = Some(Session::new(decrypted_key, engine.clone(), manager.clone()));
+                    status = true;
+                }
+                Err(_) => {
+                    println!("Failed to decrypt master key");
+                }
+            };
+            (status, session)
         }
-        Err(_) => {
-            println!("Failed to decrypt master key");
+        Err(e) => {
+            eprintln!("Failed to get master record: {}", e);
+            (false, None)
         }
-    };
-
-    (status, session)
-
+    }
 }
 
 fn make_db_callback<F, T>(
@@ -88,33 +87,24 @@ fn create_db(manager: Rc<DatabaseManager>, data: SharedString) -> bool {
     let (mut nonce, mut ciphertext) = engine.encrypt_master_key(master_key.as_ref()).unwrap();
 
     println!("Creating DB");
-    let mut status = false;
-    match manager.create_master_table(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
+    match manager.create_master_record(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
         Ok(_) => {
-            println!("Created Master Table");
+            println!("Created Master Record");
             // Securely wipe sensitive data from memory now that it's committed to database
             salt.zeroize();
             master_key.zeroize();
             nonce.zeroize();
-            ciphertext .zeroize();
-            match manager.create_record_table() {
-                Ok(_) => {
-                    println!("Created Record Table");
-                    status=true;
-                }
-                Err(_) => {
-                    println!("Failed to create Record Table");
-                }
-            };
+            ciphertext.zeroize();
+            true
         }
-        Err(_) => {
+        Err(e) => {
+            eprintln!("Failed to create Master Record: {}", e);
             // Securely wipe sensitive data from memory
             salt.zeroize();
             master_key.zeroize();
-            println!("Failed to create Master Table");
+            false
         }
     }
-    status
 }
 
 fn handle_save_service(
@@ -153,7 +143,7 @@ fn update_entry(index: usize, service: &SharedString, email: &SharedString, user
         StandardListViewItem::from(service.as_str()),
         StandardListViewItem::from(email.as_str()),
         StandardListViewItem::from(username.as_str()),
-        StandardListViewItem::from(password.as_str()),
+        StandardListViewItem::from("••••••••"), // Hide password
         StandardListViewItem::from(notes.as_str()),
         StandardListViewItem::from(now.as_str()),
     ]));
@@ -180,7 +170,7 @@ fn insert_entry(session: &Session, service: &SharedString, email: &SharedString,
                 StandardListViewItem::from(service.as_str()),
                 StandardListViewItem::from(email.as_str()),
                 StandardListViewItem::from(username.as_str()),
-                StandardListViewItem::from(password.as_str()),
+                StandardListViewItem::from("••••••••"), // Hide password
                 StandardListViewItem::from(notes.as_str()),
                 StandardListViewItem::from(now.as_str()),
             ];
@@ -197,11 +187,24 @@ fn insert_entry(session: &Session, service: &SharedString, email: &SharedString,
 }
 
 fn delete_entry(index: usize, ui: EntryWindow) {
-    // TODO: DELETE FROM DATABASE
-    // TODO: IF SUCCESS REMOVE FROM UI
+    // Get the table model
     let table_model_handle = ui.global::<AppData>().get_table_rows();
+    
+    // Remove the item from the UI
     if let Some(vec_model) = table_model_handle.as_any().downcast_ref::<VecModel<ModelRc<StandardListViewItem>>>() {
+        // Get the service name and email before removing for database deletion
+        // let service = vec_model.row_data(index, 0).unwrap().text();
+        // let email = vec_model.row_data(index, 1).unwrap().text();
+        
+        // Remove from UI
         vec_model.remove(index);
+        
+        // TODO: Delete from database
+        // You'll need to implement this in your DatabaseManager
+        // For example:
+        // if let Err(e) = database_manager.delete_entry(&service, &email) {
+        //     eprintln!("Failed to delete entry from database: {}", e);
+        // }
     }
 }
 
@@ -213,36 +216,20 @@ fn authenticate_submitted(input: SharedString, database_manager: Rc<DatabaseMana
     on_authenticate(input, database_manager)
 }
 
-fn get_user_db_path_cross_platform(db_filename: &str) -> Option<PathBuf> {
-    if let Some(mut home) = home_dir() {
-        home.push(APP_NAME);
-        home.push(db_filename);
-        Some(home)
-    } else {
-        eprintln!("Warning: Could not determine the user's home directory.");
-        None
-    }
-}
-
 fn init_manager() -> (bool, Option<Rc<DatabaseManager>>) {
-    let db_file = "db.sqlite";
+    // The .env file is loaded by the DatabaseManager constructor, so we just need to create it.
+    let manager = Rc::new(DatabaseManager::new());
 
-    if let Some(db_path) = get_user_db_path_cross_platform(db_file) {
-        println!("Potential database path: {}", db_path.display());
-        if let Some(parent_dir) = db_path.parent() {
-            if !parent_dir.exists() {
-                println!("Directory {:?} does not exist. Creating...", parent_dir);
-                fs::create_dir_all(parent_dir).expect("TODO: panic message");
-            }
+    // Check if the master table has any records.
+    // This tells us if the database has been initialized.
+    match manager.check_master_table_exists() {
+        Ok(exists) => (exists, Some(manager)),
+        Err(e) => {
+            eprintln!("Failed to check master table: {}", e);
+            // This might happen if the database file is corrupt or migrations haven't run.
+            // For now, we'll treat it as if the DB doesn't exist.
+            (false, Some(manager))
         }
-        let path_str = db_path.to_str().unwrap_or_default().to_owned();
-        let manager = Rc::new(DatabaseManager::new(path_str.as_str()).unwrap());
-
-        println!("Database file exists at: {}", db_path.display());
-        (manager.check_master_table().is_ok(), Some(manager))
-    } else {
-        println!("Could not determine the user's home directory.");
-        (false, None)
     }
 }
 
@@ -282,39 +269,93 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
 
     // Create a session state that will be shared between the UI and the authentication callback
     let session_state = Arc::new(Mutex::new(None::<Session>));
-    let session_state_clone = Arc::clone(&session_state);
-
-    let ui_weak_on_authenticate_submitted = ui.as_weak();
+    let session_state_for_auth = Arc::clone(&session_state);
+    let ui_weak_for_auth = ui_weak.clone();
+    
     ui.on_authenticate_submitted(move |input| {
+        let ui_weak = ui_weak_for_auth.clone();
+        let session_state = session_state_for_auth.clone();
         let (state, session) = authenticate_submitted(input, manager.clone());
         if state {
-            ui_weak_on_authenticate_submitted.upgrade().unwrap().set_current_page(Page::Passlock);
-            let mut session_guard = session_state_clone.lock().unwrap();
-            *session_guard = session;
-        }else{
+            if let Some(session) = session {
+                // Update the session state
+                *session_state.lock().unwrap() = Some(session);
+                
+                // Update UI
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_current_page(Page::Passlock);
+                    refresh_table_data(&ui_weak, session_state.lock().unwrap().as_ref().unwrap());
+                }
+            }
+        } else {
             println!("Failed to authenticate");
         }
     });
     ui.on_generate_password(|| SharedString::from(CryptEngine::generate_random_password()));
 
     let ui_weak_for_save = ui_weak.clone();
-    ui.on_save_service(move |data, form, index| {
-        let session_guard = session_state.lock().unwrap();
-        if let Some(session) = session_guard.as_ref() {
+    let session_state_for_save = Arc::clone(&session_state);
+    ui.on_save_service(move |data: ServiceData, mode: SharedString, row: i32| {
+        let session_guard = session_state_for_save.lock().unwrap();
+        if let Some(session) = &*session_guard {
+            // Extract the service data from the ServiceData struct
             handle_save_service(
-                session,
-                form,
-                index,
-                data.service,
-                data.email,
-                data.username,
-                data.password,
-                data.notes,
+                session, 
+                mode, 
+                row, 
+                data.service, 
+                data.email, 
+                data.username, 
+                data.password, 
+                data.notes, 
                 ui_weak_for_save.clone()
             );
+        } else {
+            println!("No active session found");
         }
     });
 
-    ui.run()?;
+    ui.run().unwrap();
+
     Ok(())
+}
+
+fn refresh_table_data(ui_weak: &Weak<EntryWindow>, session: &Session) {
+    if let Some(ui) = ui_weak.upgrade() {
+        println!("Refreshing table data...");
+        
+        // Get all records through the session
+        match session.get_all_records() {
+            Ok(records) => {
+                println!("Retrieved {} records from database", records.len());
+                
+                // Create a new model for the table
+                let table_model = Rc::new(VecModel::default());
+                
+                // Add each record to the model
+                for record in records {
+                    println!("Adding record: {} - {}", record.service, record.email);
+                    
+                    let row = vec![
+                        StandardListViewItem::from(record.service.as_str()),
+                        StandardListViewItem::from(record.email.as_str()),
+                        StandardListViewItem::from(record.username.as_str()),
+                        StandardListViewItem::from("••••••••"), // Hide password
+                        StandardListViewItem::from(record.notes.as_str()),
+                        StandardListViewItem::from(""), // Placeholder for last update
+                    ];
+                    
+                    let row_model = Rc::new(VecModel::from(row));
+                    table_model.push(row_model.into());
+                }
+                
+                // Update the UI with the new model
+                ui.global::<AppData>().set_table_rows(ModelRc::from(table_model));
+                println!("Table data updated");
+            }
+            Err(e) => {
+                eprintln!("Failed to fetch records: {}", e);
+            }
+        }
+    }
 }
