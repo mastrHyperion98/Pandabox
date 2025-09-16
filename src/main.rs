@@ -30,7 +30,6 @@ fn on_authenticate(
             let mut session = None;
             match engine.decrypt_master_key(&master_record.nonce, &master_record.encrypted_master_key) {
                 Ok(decrypted_key) => {
-                    println!("Master key successfully decrypted");
                     master_record.encrypted_master_key.zeroize();
                     master_record.nonce.zeroize();
                     master_record.salt.zeroize();
@@ -337,8 +336,6 @@ fn refresh_table_data(ui_weak: &Weak<EntryWindow>, session: &Session) {
                 
                 // Add each record to the model
                 for record in records {
-                    println!("Adding record: {} - {}", record.service, record.email);
-                    
                     let row = vec![
                         StandardListViewItem::from(record.id.to_string().as_str()),
                         StandardListViewItem::from(record.service.as_str()),
@@ -355,7 +352,6 @@ fn refresh_table_data(ui_weak: &Weak<EntryWindow>, session: &Session) {
                 
                 // Update the UI with the new model
                 ui.global::<AppData>().set_table_rows(ModelRc::from(table_model));
-                println!("Table data updated");
             }
             Err(e) => {
                 eprintln!("Failed to fetch records: {}", e);

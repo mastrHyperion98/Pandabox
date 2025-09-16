@@ -5,10 +5,10 @@ use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use dotenvy::dotenv;
-use diesel::associations::HasTable;
 
 use crate::database::models::{MasterRecord, NewMasterRecord, NewRecord, Record};
-use crate::database::schema::{master_table, records};
+use crate::database::schema::{master_table};
+use crate::database::schema::records::dsl::*;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -98,9 +98,7 @@ impl DatabaseManager {
         password_str: &str,
         notes_str: &str,
     ) -> QueryResult<Record> {
-        use crate::database::schema::records::dsl::*;
-        use diesel::sql_types::Integer;
-        use diesel::sql_query;
+
 
         let mut connection = self.establish_connection();
         let new_record = NewRecord {
