@@ -82,8 +82,8 @@ impl CryptEngine {
         Ok(plaintext)
     }
 
-    pub fn encrypt_record(&self, record: &[u8]) -> Result<Vec<u8>, ChaChaError> {
-        let key = Key::from_slice(self.key.as_slice()); // Derive key from stored hash
+    pub fn encrypt_record(&self, record: &[u8], master_key: Vec<u8>) -> Result<Vec<u8>, ChaChaError> {
+        let key = Key::from_slice(master_key.as_slice()); // Derive key from stored hash
         let nonce = Self::generate_nonce();
         let cipher = ChaCha20Poly1305::new(key);
         let ciphertext = cipher.encrypt(&nonce, record.as_ref())?;

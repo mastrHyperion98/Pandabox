@@ -42,13 +42,12 @@ impl DatabaseManager {
         println!("Creating record table...");
 
         match self.connection.execute(
-            "CREATE TABLE IF NOT EXISTS record_table (\
+            "CREATE TABLE IF NOT EXISTS records (\
         id INTEGER PRIMARY KEY AUTOINCREMENT,\
-        service_name TEXT NOT NULL,\
+        service TEXT NOT NULL,\
         email TEXT NOT NULL,\
         username TEXT NOT NULL,\
         password TEXT NOT NULL,\
-        confirm_password TEXT NOT NULL,\
         notes TEXT NOT NULL);",
             [],
         ){
@@ -97,5 +96,20 @@ impl DatabaseManager {
         } else {
             Err(Error::QueryReturnedNoRows) // Assuming you have a custom Error::QueryReturnedNoRows
         }
+    }
+
+    pub fn insert_entry(
+        &self,
+        service: &str,
+        email: &str,
+        username: &str,
+        password: &str,
+        notes: &str,
+    ) -> Result<()> {
+        self.connection.execute(
+            "INSERT INTO records (service, email, username, password, notes) VALUES (?1, ?2, ?3, ?4, ?5)",
+            (service, email, username, password, notes),
+        )?;
+        Ok(())
     }
 }

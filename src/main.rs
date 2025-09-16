@@ -8,6 +8,7 @@ use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use zeroize::Zeroize;
 use crate::database::manager::DatabaseManager;
 use crate::session::session::Session;
@@ -38,7 +39,7 @@ fn on_authenticate(
             key.zeroize();
             nonce.zeroize();
             salt.zeroize();
-            session = Some(Session::new(decrypted_key, engine.clone()));
+            session = Some(Session::new(decrypted_key, engine.clone(), manager.clone()));
             status=true;
         }
         Err(_) => {
@@ -117,6 +118,7 @@ fn create_db(manager: Rc<DatabaseManager>, data: SharedString) -> bool {
 }
 
 fn handle_save_service(
+    session: &Session,
     form_mode: SharedString,
     current_index: i32,
     service: SharedString,
@@ -135,7 +137,7 @@ fn handle_save_service(
         println!("Form mode: {}", form_mode);
         println!("Current index: {}", current_index);
         if form_mode.as_str() == "Add" {
-            insert_entry(&service, &email, username, password, notes, ui);
+            insert_entry(session, &service, &email, username, password, notes, ui);
         }else{
             update_entry(index, &service, &email, username, password, notes, ui);
         }
@@ -161,7 +163,7 @@ fn update_entry(index: usize, service: &SharedString, email: &SharedString, user
     table_model_handle.set_row_data(index, row_data);
 }
 
-fn insert_entry(service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
+fn insert_entry(session: &Session, service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
     // Get current timestamp
     let table_model_handle = ui.global::<AppData>().get_table_rows();
     // This is the key: We "downcast" the generic model handle to the specific
@@ -170,21 +172,24 @@ fn insert_entry(service: &SharedString, email: &SharedString, username: SharedSt
     if let Some(vec_model) = table_model_handle.as_any().downcast_ref::<VecModel<ModelRc<StandardListViewItem>>>() {
         // --- Your code to create the new row is perfect ---
         let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let row_data: Vec<slint::StandardListViewItem> = vec![
-            StandardListViewItem::from(service.as_str()),
-            StandardListViewItem::from(email.as_str()),
-            StandardListViewItem::from(username.as_str()),
-            StandardListViewItem::from(password.as_str()),
-            StandardListViewItem::from(notes.as_str()),
-            StandardListViewItem::from(now.as_str()),
-        ];
-
         // TODO: WRITE TO DATABASE
-        // TODO: IF SUCCESS ADD TO I
-        let new_row = ModelRc::new(VecModel::from(row_data));
-        // Now that we have the concrete `vec_model`, we can push the new row directly.
-        // The UI will update automatically.
-        vec_model.push(new_row);
+        let result = session.insert_entry(service, email, &username, &password, &notes);
+        if result {
+            // TODO: IF SUCCESS ADD TO I
+            let row_data: Vec<slint::StandardListViewItem> = vec![
+                StandardListViewItem::from(service.as_str()),
+                StandardListViewItem::from(email.as_str()),
+                StandardListViewItem::from(username.as_str()),
+                StandardListViewItem::from(password.as_str()),
+                StandardListViewItem::from(notes.as_str()),
+                StandardListViewItem::from(now.as_str()),
+            ];
+
+            let new_row = ModelRc::new(VecModel::from(row_data));
+            // Now that we have the concrete `vec_model`, we can push the new row directly.
+            // The UI will update automatically.
+            vec_model.push(new_row);
+        }
     } else {
         // This will print an error to your console if the type isn't what we expect.
         println!("Error: Could not access the table model as a VecModel.");
@@ -275,29 +280,39 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
         Page::Authenticate,
     ));
 
+    // Create a session state that will be shared between the UI and the authentication callback
+    let session_state = Arc::new(Mutex::new(None::<Session>));
+    let session_state_clone = Arc::clone(&session_state);
+
     let ui_weak_on_authenticate_submitted = ui.as_weak();
     ui.on_authenticate_submitted(move |input| {
         let (state, session) = authenticate_submitted(input, manager.clone());
         if state {
             ui_weak_on_authenticate_submitted.upgrade().unwrap().set_current_page(Page::Passlock);
+            let mut session_guard = session_state_clone.lock().unwrap();
+            *session_guard = session;
+        }else{
+            println!("Failed to authenticate");
         }
     });
-
-
     ui.on_generate_password(|| SharedString::from(CryptEngine::generate_random_password()));
 
     let ui_weak_for_save = ui_weak.clone();
     ui.on_save_service(move |data, form, index| {
-        handle_save_service(
-            form,
-            index,
-            data.service,
-            data.email,
-            data.username,
-            data.password,
-            data.notes,
-            ui_weak_for_save.clone()
-        );
+        let session_guard = session_state.lock().unwrap();
+        if let Some(session) = session_guard.as_ref() {
+            handle_save_service(
+                session,
+                form,
+                index,
+                data.service,
+                data.email,
+                data.username,
+                data.password,
+                data.notes,
+                ui_weak_for_save.clone()
+            );
+        }
     });
 
     ui.run()?;
