@@ -74,6 +74,7 @@ export component ServiceView{
 
       StandardTableView {
           columns: [
+              { title: "ID", min_width: 25px},
               { title: "Application", min_width: 100px},
               { title: "Email", min_width: 100px },
               { title: "Username",min_width: 100px },
@@ -85,11 +86,12 @@ export component ServiceView{
           current-row-changed(current-row) => {
              root.current-row = current-row;
              root.current-service-data = {
-               service: AppData.table-rows[current-row][0].text,
-               email: AppData.table-rows[current-row][1].text,
-               username: AppData.table-rows[current-row][2].text,
-               password: AppData.table-rows[current-row][3].text,
-               notes: AppData.table-rows[current-row][4].text,
+               id: AppData.table-rows[current-row][0].text,
+               service: AppData.table-rows[current-row][1].text,
+               email: AppData.table-rows[current-row][2].text,
+               username: AppData.table-rows[current-row][3].text,
+               password: AppData.table-rows[current-row][4].text,
+               notes: AppData.table-rows[current-row][5].text,
            };
           }
       }

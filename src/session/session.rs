@@ -34,7 +34,31 @@ impl Session {
         self.database_manager.get_all_records()
     }
 
-    pub fn insert_entry(&self, service: &SharedString, email: &SharedString, username: &SharedString, password: &SharedString, notes: &SharedString) -> bool
+    pub fn insert_entry(&self, service: &SharedString, email: &SharedString, username: &SharedString, password: &SharedString, notes: &SharedString) -> QueryResult<crate::database::models::Record>
+    {
+        let encrypted_password = match self.crypto_engine.encrypt_record(password.as_str().as_ref(), self.get_key().clone()) {
+            Ok(encrypted) => base64::engine::general_purpose::STANDARD.encode(encrypted),
+            Err(e) => {
+                eprintln!("Failed to encrypt password: {}", e);
+                return Err(diesel::result::Error::DeserializationError(
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Encryption error: {}", e)
+                    ))
+                ));
+            }
+        };    
+        
+        self.database_manager.insert_entry(
+            service.as_str(),
+            email.as_str(),
+            username.as_str(),
+            encrypted_password.as_str(),
+            notes.as_str(),
+        )
+    }
+
+    pub fn update_entry(&self, record_id: i32, service: &SharedString, email: &SharedString, username: &SharedString, password: &SharedString, notes: &SharedString) -> bool
     {
         let encrypted_password = match self.crypto_engine.encrypt_record(password.as_str().as_ref(), self.get_key().clone()) {
             Ok(encrypted) => base64::engine::general_purpose::STANDARD.encode(encrypted),
@@ -42,9 +66,10 @@ impl Session {
                 eprintln!("Failed to encrypt password: {}", e);
                 return false;
             }
-        };    
-        
-        match self.database_manager.insert_entry(
+        };
+
+        match self.database_manager.update_record(
+            record_id,
             service.as_str(),
             email.as_str(),
             username.as_str(),
@@ -53,10 +78,9 @@ impl Session {
         ) {
             Ok(_) => true,
             Err(e) => {
-                eprintln!("Failed to insert entry: {}", e);
+                eprintln!("Failed to update entry: {}", e);
                 false
             }
         }
     }
-
 }

@@ -1,6 +1,7 @@
 import { Button, LineEdit, TextEdit } from "std-widgets.slint";
 
 export struct ServiceData {
+    id: string,
     service: string,
     email: string,
     username: string,
@@ -95,6 +96,7 @@ export component ServiceForm {
                 clicked => { 
                     if (root.passwords-match) {
                         root.save-pressed({
+                            id: root.service-data.id,
                             service: root.service-name,
                             email: root.email,
                             username: root.username,

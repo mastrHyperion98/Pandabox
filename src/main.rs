@@ -111,6 +111,7 @@ fn handle_save_service(
     session: &Session,
     form_mode: SharedString,
     current_index: i32,
+    record_id_str: SharedString,
     service: SharedString,
     email: SharedString,
     username: SharedString,
@@ -129,17 +130,19 @@ fn handle_save_service(
         if form_mode.as_str() == "Add" {
             insert_entry(session, &service, &email, username, password, notes, ui);
         }else{
-            update_entry(index, &service, &email, username, password, notes, ui);
+            let record_id = record_id_str.as_str().parse::<i32>().unwrap_or(0);
+            update_entry(session, index, record_id, &service, &email, username, password, notes, ui);
         }
 
         println!("Service saved: {} - {}", service, email);
     }
 }
 
-fn update_entry(index: usize, service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
+fn update_entry(session: &Session, index: usize, record_id: i32, service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
     let table_model_handle = ui.global::<AppData>().get_table_rows();
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     let row_data: ModelRc<StandardListViewItem> = ModelRc::new(VecModel::from(vec![
+        StandardListViewItem::from(record_id.to_string().as_str()),
         StandardListViewItem::from(service.as_str()),
         StandardListViewItem::from(email.as_str()),
         StandardListViewItem::from(username.as_str()),
@@ -148,9 +151,9 @@ fn update_entry(index: usize, service: &SharedString, email: &SharedString, user
         StandardListViewItem::from(now.as_str()),
     ]));
 
-    // TODO: UPDATE DATABASE
-    // TODO: IF SUCCESS SET ROW DATA VALUE
-    table_model_handle.set_row_data(index, row_data);
+    if session.update_entry(record_id, service, email, &username, &password, &notes) {
+        table_model_handle.set_row_data(index, row_data);
+    }
 }
 
 fn insert_entry(session: &Session, service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
@@ -160,25 +163,28 @@ fn insert_entry(session: &Session, service: &SharedString, email: &SharedString,
     // type we know it is: a VecModel that holds rows.
     // This "unlocks" the .push() method.
     if let Some(vec_model) = table_model_handle.as_any().downcast_ref::<VecModel<ModelRc<StandardListViewItem>>>() {
-        // --- Your code to create the new row is perfect ---
         let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        // TODO: WRITE TO DATABASE
-        let result = session.insert_entry(service, email, &username, &password, &notes);
-        if result {
-            // TODO: IF SUCCESS ADD TO I
-            let row_data: Vec<slint::StandardListViewItem> = vec![
-                StandardListViewItem::from(service.as_str()),
-                StandardListViewItem::from(email.as_str()),
-                StandardListViewItem::from(username.as_str()),
-                StandardListViewItem::from("••••••••"), // Hide password
-                StandardListViewItem::from(notes.as_str()),
-                StandardListViewItem::from(now.as_str()),
-            ];
+        
+        // Insert the entry and get the created record with its ID
+        match session.insert_entry(service, email, &username, &password, &notes) {
+            Ok(record) => {
+                // Create a new row with the actual ID from the database
+                let row_data: Vec<slint::StandardListViewItem> = vec![
+                    StandardListViewItem::from(record.id.to_string().as_str()),
+                    StandardListViewItem::from(record.service.as_str()),
+                    StandardListViewItem::from(record.email.as_str()),
+                    StandardListViewItem::from(record.username.as_str()),
+                    StandardListViewItem::from("••••••••"), // Hide password
+                    StandardListViewItem::from(record.notes.as_str()),
+                    StandardListViewItem::from(now.as_str()),
+                ];
 
-            let new_row = ModelRc::new(VecModel::from(row_data));
-            // Now that we have the concrete `vec_model`, we can push the new row directly.
-            // The UI will update automatically.
-            vec_model.push(new_row);
+                let new_row = ModelRc::new(VecModel::from(row_data));
+                vec_model.push(new_row);
+            }
+            Err(e) => {
+                eprintln!("Failed to insert entry: {}", e);
+            }
         }
     } else {
         // This will print an error to your console if the type isn't what we expect.
@@ -302,7 +308,8 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
             handle_save_service(
                 session, 
                 mode, 
-                row, 
+                row,
+                data.id, 
                 data.service, 
                 data.email, 
                 data.username, 
@@ -337,6 +344,7 @@ fn refresh_table_data(ui_weak: &Weak<EntryWindow>, session: &Session) {
                     println!("Adding record: {} - {}", record.service, record.email);
                     
                     let row = vec![
+                        StandardListViewItem::from(record.id.to_string().as_str()),
                         StandardListViewItem::from(record.service.as_str()),
                         StandardListViewItem::from(record.email.as_str()),
                         StandardListViewItem::from(record.username.as_str()),

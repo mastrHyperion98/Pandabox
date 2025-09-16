@@ -97,8 +97,10 @@ impl DatabaseManager {
         username_str: &str,
         password_str: &str,
         notes_str: &str,
-    ) -> QueryResult<usize> {
+    ) -> QueryResult<Record> {
         use crate::database::schema::records::dsl::*;
+        use diesel::sql_types::Integer;
+        use diesel::sql_query;
 
         let mut connection = self.establish_connection();
         let new_record = NewRecord {
@@ -109,9 +111,17 @@ impl DatabaseManager {
             notes: notes_str,
         };
 
+        // Insert the record
         diesel::insert_into(records)
             .values(&new_record)
-            .execute(&mut connection)
+            .execute(&mut connection)?;
+
+        // Get the ID of the last inserted record
+        let last_id: i32 = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("last_insert_rowid()"))
+            .get_result(&mut connection)?;
+
+        // Fetch the complete record
+        records.find(last_id).first(&mut connection)
     }
     
     pub fn get_all_records(&self) -> QueryResult<Vec<Record>> {
@@ -119,5 +129,28 @@ impl DatabaseManager {
         
         let mut connection = self.establish_connection();
         records.load::<Record>(&mut connection)
+    }
+
+    pub fn update_record(
+        &self,
+        record_id: i32,
+        service_name: &str,
+        email_str: &str,
+        username_str: &str,
+        password_str: &str,
+        notes_str: &str,
+    ) -> QueryResult<usize> {
+        use crate::database::schema::records::dsl::*;
+
+        let mut connection = self.establish_connection();
+        diesel::update(records.find(record_id))
+            .set((
+                service.eq(service_name),
+                email.eq(email_str),
+                username.eq(username_str),
+                password.eq(password_str),
+                notes.eq(notes_str),
+            ))
+            .execute(&mut connection)
     }
 }
