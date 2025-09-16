@@ -140,7 +140,6 @@ fn handle_save_service(
 
 fn update_entry(session: &Session, index: usize, record_id: i32, service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
     let table_model_handle = ui.global::<AppData>().get_table_rows();
-    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     let row_data: ModelRc<StandardListViewItem> = ModelRc::new(VecModel::from(vec![
         StandardListViewItem::from(record_id.to_string().as_str()),
         StandardListViewItem::from(service.as_str()),
@@ -148,7 +147,6 @@ fn update_entry(session: &Session, index: usize, record_id: i32, service: &Share
         StandardListViewItem::from(username.as_str()),
         StandardListViewItem::from("••••••••"), // Hide password
         StandardListViewItem::from(notes.as_str()),
-        StandardListViewItem::from(now.as_str()),
     ]));
 
     if session.update_entry(record_id, service, email, &username, &password, &notes) {
@@ -163,8 +161,7 @@ fn insert_entry(session: &Session, service: &SharedString, email: &SharedString,
     // type we know it is: a VecModel that holds rows.
     // This "unlocks" the .push() method.
     if let Some(vec_model) = table_model_handle.as_any().downcast_ref::<VecModel<ModelRc<StandardListViewItem>>>() {
-        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        
+
         // Insert the entry and get the created record with its ID
         match session.insert_entry(service, email, &username, &password, &notes) {
             Ok(record) => {
@@ -176,7 +173,6 @@ fn insert_entry(session: &Session, service: &SharedString, email: &SharedString,
                     StandardListViewItem::from(record.username.as_str()),
                     StandardListViewItem::from("••••••••"), // Hide password
                     StandardListViewItem::from(record.notes.as_str()),
-                    StandardListViewItem::from(now.as_str()),
                 ];
 
                 let new_row = ModelRc::new(VecModel::from(row_data));
