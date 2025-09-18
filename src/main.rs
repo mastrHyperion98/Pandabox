@@ -187,25 +187,25 @@ fn insert_entry(session: &Session, service: &SharedString, email: &SharedString,
     }
 }
 
-fn delete_entry(index: usize, ui: EntryWindow) {
+fn delete_entry(index: SharedString, session: &Session, ui_weak: Weak<EntryWindow>) {
     // Get the table model
-    let table_model_handle = ui.global::<AppData>().get_table_rows();
-    
-    // Remove the item from the UI
-    if let Some(vec_model) = table_model_handle.as_any().downcast_ref::<VecModel<ModelRc<StandardListViewItem>>>() {
-        // Get the service name and email before removing for database deletion
-        // let service = vec_model.row_data(index, 0).unwrap().text();
-        // let email = vec_model.row_data(index, 1).unwrap().text();
-        
-        // Remove from UI
-        vec_model.remove(index);
-        
-        // TODO: Delete from database
-        // You'll need to implement this in your DatabaseManager
-        // For example:
-        // if let Err(e) = database_manager.delete_entry(&service, &email) {
-        //     eprintln!("Failed to delete entry from database: {}", e);
-        // }
+    if let Some(ui) = ui_weak.upgrade() {
+        let table_model_handle = ui.global::<AppData>().get_table_rows();
+
+        // Remove the item from the UI
+        if let Some(vec_model) = table_model_handle.as_any().downcast_ref::<VecModel<ModelRc<StandardListViewItem>>>() {
+            // Get the service name and email before removing for database deletion
+            // let service = vec_model.row_data(index, 0).unwrap().text();
+            // let email = vec_model.row_data(index, 1).unwrap().text();
+            let index_to_remove = index.as_str().parse::<i32>().unwrap();
+            println!("Removing entry at index: {}", index_to_remove);
+            if session.delete_entry(index_to_remove){
+                refresh_table_data(&ui_weak, session);
+            }else {
+                eprintln!("Failed to delete entry");
+            }
+
+        }
     }
 }
 
@@ -311,6 +311,22 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                 data.password, 
                 data.notes, 
                 ui_weak_for_save.clone()
+            );
+        } else {
+            println!("No active session found");
+        }
+    });
+
+    let ui_weak_for_delete = ui_weak.clone();
+    let session_state_for_delete = Arc::clone(&session_state);
+    ui.on_delete_entry(move |index: SharedString | {
+        let session_guard = session_state_for_delete.lock().unwrap();
+        if let Some(session) = &*session_guard {
+            // Extract the service data from the ServiceData struct
+            delete_entry(
+                index,
+                session,
+                ui_weak_for_delete.clone()
             );
         } else {
             println!("No active session found");

@@ -17,6 +17,7 @@ export component EntryWindow inherits Window {
     callback authenticate_submitted(string);
     callback generate_password()->string;
     callback save_service(ServiceData, string, int);
+    callback delete_entry(string);
 
     title: "PassLock";
     min-width: 1280px;
@@ -40,5 +41,6 @@ export component EntryWindow inherits Window {
     if current_page == Page.Passlock:  ServiceView{
         generate_password() => { root.generate_password() }
         save_service(data, mode, row) => { root.save_service(data, mode, row) }
+        delete_entry(id) => { root.delete_entry(id) }
     }
 }

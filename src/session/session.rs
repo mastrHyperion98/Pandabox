@@ -83,4 +83,17 @@ impl Session {
             }
         }
     }
+
+    pub fn delete_entry(&self, record_id: i32) -> bool
+    {
+        match self.database_manager.delete_entry(
+            record_id
+        ) {
+            Ok(_) => true,
+            Err(e) => {
+                eprintln!("Failed to update entry: {}", e);
+                false
+            }
+        }
+    }
 }

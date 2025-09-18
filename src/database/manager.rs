@@ -5,6 +5,8 @@ use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use dotenvy::dotenv;
+use diesel::prelude::*;
+use diesel::result::Error;
 
 use crate::database::models::{MasterRecord, NewMasterRecord, NewRecord, Record};
 use crate::database::schema::{master_table};
@@ -121,7 +123,23 @@ impl DatabaseManager {
         // Fetch the complete record
         records.find(last_id).first(&mut connection)
     }
-    
+
+    pub fn delete_entry(
+        &self,
+        index: i32,
+    ) -> Result<usize, Error> {
+
+        let mut connection = self.establish_connection();
+
+        // Assuming `Record` is a model you're working with and it implements the Diesel traits
+        use crate::database::schema::records::dsl::*;
+        let target_record = records.find(index);
+
+        // Execute delete operation and return the number of affected rows
+        let result = diesel::delete(target_record).execute(&mut connection)?;
+
+        Ok(result)
+    }
     pub fn get_all_records(&self) -> QueryResult<Vec<Record>> {
         use crate::database::schema::records::dsl::*;
         

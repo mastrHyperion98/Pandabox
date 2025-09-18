@@ -2,133 +2,184 @@ import { Button } from "std-widgets.slint";
 import { Palette, StandardTableView, ScrollView, StyleMetrics, LineEdit } from "std-widgets.slint";
 import { ServiceForm, ServiceData } from "service-form.slint";
 
-
-// Define a global property that will hold our table data
+// Global state for the application's table data
 export global AppData {
-    in-out property <[[StandardListViewItem]]> table-rows: [
-    ];
+    in-out property <[[StandardListViewItem]]> table-rows: [];
 }
 
+// View state management
 export enum View {
-    Form,
-    Table
+    Form,  // Show the form view
+    Table  // Show the table view
 }
 
+// Form operation mode
 export enum FormMode {
-    Add,
-    Edit
+    Add,   // Adding a new entry
+    Edit   // Editing an existing entry
 }
 
-export component ServiceView{
+export component ServiceView {
+    // Window dimensions
     min-width: 1280px;
     min-height: 720px;
-    
-    // Form state management
+
+    // Application state
     in-out property <View> show-state: View.Table;
+    in-out property <bool> show-context-menu: false;
     in-out property <FormMode> form-mode: FormMode.Add;
     in-out property <ServiceData> current-service-data;
     property <int> current-row: -1;
-    
-    // Convert FormMode enum to string for display
+
+    // Helper property to display form mode text
     property <string> form-mode-text: root.form-mode == FormMode.Add ? "Add" : "Edit";
-    
-    callback generate_password()->string;
+
+    // Callbacks to Rust backend
+    callback generate_password() -> string;
     callback save_service(ServiceData, string, int);
-    callback delete_entry(int);
+    callback delete_entry(string);
 
-  // Main content area
-  if root.show-state == View.Table: VerticalLayout {
-      padding: 25px;
-      spacing: 50px;
+    // Main content area - Table View
+       // Context menu for right-click actions
+    menu := ContextMenuArea {
+        width: root.width;
+        height: root.height;
+        visible: root.show-context-menu;
 
-      HorizontalLayout {
-          spacing: 25px;
-          Button {
-              text: "Add"; primary: true;
-              clicked => {
-                  root.form-mode = FormMode.Add;
-                  root.current-service-data = {};
-                  root.show-state = View.Form;
-                  }
-              }
-          Button {
-              text: "Edit";
-              // Disable Edit button if no row is selected
-              enabled: root.current-row != -1;
-              clicked => {
-                  root.form-mode =  FormMode.Edit;
-                  // The data is already set by the table's current-row-changed callback.
-                  root.show-state = View.Form;
-              }
-          }
-          Button {
-              text: "Delete";
-              // Disable Delete button if no row is selected
-              enabled: root.current-row != -1;
-              clicked => {
-                  root.delete_entry(root.current-row);
-              }
-          }
-          Button {text: "Duplicate & Refresh"; /* TODO: Add clicked handler for this action */ }
-      }
+        TouchArea {
+        }
 
-      StandardTableView {
-          columns: [
-              { title: "ID", min_width: 25px},
-              { title: "Application", min_width: 100px},
-              { title: "Email", min_width: 100px },
-              { title: "Username",min_width: 100px },
-              { title: "Password", min_width: 100px },
-              { title: "Description", min_width: 100px },
-          ];
-          rows: AppData.table-rows;
-          current-row-changed(current-row) => {
-             root.current-row = current-row;
-             root.current-service-data = {
-               id: AppData.table-rows[current-row][0].text,
-               service: AppData.table-rows[current-row][1].text,
-               email: AppData.table-rows[current-row][2].text,
-               username: AppData.table-rows[current-row][3].text,
-               password: AppData.table-rows[current-row][4].text,
-               notes: AppData.table-rows[current-row][5].text,
-           };
-          }
-      }
-  }
+        Menu {
+            MenuItem {
+                title: "Copy";
+                activated => {
+                    root.show-context-menu = false;
+                    generate_password();
+                }
+            }
+        }
+    }
 
-  // Slide-in form (moved outside layout)
-  if root.show-state == View.Form: Rectangle {
-      width: parent.width;
-      height: parent.height;
+    if root.show-state == View.Table: VerticalLayout {
+        padding: 25px;
+        spacing: 50px;
 
-      ServiceForm {
-          width: parent.width;
-          height: parent.height;
-           title: root.form-mode-text;
-          service-data: root.current-service-data;
-          service-name: root.current-service-data.service;
-          email: root.current-service-data.email;
-          username: root.current-service-data.username;
-          password: root.current-service-data.password;
-          confirm-password: root.current-service-data.password;
-          notes: root.current-service-data.notes;
+        // Action buttons
+        HorizontalLayout {
+            spacing: 25px;
 
-          save-pressed(data) => {
-              // Handle save logic here
-              root.save_service(data, root.form-mode-text, root.current-row);
-              root.show-state = View.Table;
-          }
+            // Add new entry button
+            Button {
+                text: "Add";
+                primary: true;
+                clicked => {
+                    root.form-mode = FormMode.Add;
+                    root.current-service-data = {};
+                    root.show-state = View.Form;
+                }
+            }
 
-          cancel-pressed() => {
-              root.show-state = View.Table;
-              root.current-service-data = {};
-          }
+            // Edit selected entry button
+            Button {
+                text: "Edit";
+                enabled: root.current-row != -1;
+                clicked => {
+                    root.form-mode = FormMode.Edit;
+                    root.show-state = View.Form;
+                    root.current-row = -1;
+                }
+            }
 
-          generate-password() => {
-              self.password = generate_password();
-              self.confirm-password = self.password;
-              
-          }
-      }
-  }
- }
+            // Delete selected entry button
+            Button {
+                text: "Delete";
+                enabled: root.current-row != -1;
+                clicked => {
+                    root.delete_entry(root.current-service-data.id);
+                    root.current-row = -1;
+                }
+            }
+        }
+
+        // Main data table
+        table := StandardTableView {
+            columns: [
+                { title: "ID", min_width: 25px },
+                { title: "Application", min_width: 100px },
+                { title: "Email", min_width: 100px },
+                { title: "Username", min_width: 100px },
+                { title: "Password", min_width: 100px },
+                { title: "Description", min_width: 100px },
+            ];
+            rows: AppData.table-rows;
+
+            // Handle row selection
+            current-row-changed(current-row) => {
+                root.current-row = current-row;
+                root.current-service-data = {
+                    id: AppData.table-rows[current-row][0].text,
+                    service: AppData.table-rows[current-row][1].text,
+                    email: AppData.table-rows[current-row][2].text,
+                    username: AppData.table-rows[current-row][3].text,
+                    password: AppData.table-rows[current-row][4].text,
+                    notes: AppData.table-rows[current-row][5].text,
+                };
+            }
+
+            // Handle right-click context menu
+            row-pointer-event(row_index, event, position) => {
+                // First right-click on a row
+                if (!root.show-context-menu && event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                    root.current-row = row_index;
+                    root.show-context-menu = true;
+                    menu.show({x:position.x, y: position.y + 75px});
+                }
+                // Right-click on another row while menu is open
+                else if (root.show-context-menu && event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                    root.current-row = row_index;
+                    menu.show({x:position.x, y: position.y + 75px});
+                }
+                // Click anywhere while menu is open
+                else if (event.kind == PointerEventKind.down && root.show-context-menu) {
+                    root.show-context-menu = false;
+                    menu.close();
+                }
+            }
+        }
+    }
+
+
+    // Form view for adding/editing entries
+    if root.show-state == View.Form: Rectangle {
+        width: parent.width;
+        height: parent.height;
+
+        ServiceForm {
+            width: parent.width;
+            height: parent.height;
+            title: root.form-mode-text;
+            service-data: root.current-service-data;
+            service-name: root.current-service-data.service;
+            email: root.current-service-data.email;
+            username: root.current-service-data.username;
+            password: root.current-service-data.password;
+            confirm-password: root.current-service-data.password;
+            notes: root.current-service-data.notes;
+
+            save-pressed(data) => {
+                root.save_service(data, root.form-mode-text, root.current-row);
+                root.show-state = View.Table;
+            }
+
+            cancel-pressed() => {
+                root.show-state = View.Table;
+                root.current-service-data = {};
+            }
+
+            generate-password() => {
+                self.password = generate_password();
+                self.confirm-password = self.password;
+            }
+        }
+    }
+}
