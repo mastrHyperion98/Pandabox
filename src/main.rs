@@ -190,21 +190,19 @@ fn insert_entry(session: &Session, service: &SharedString, email: &SharedString,
 fn delete_entry(index: SharedString, session: &Session, ui_weak: Weak<EntryWindow>) {
     // Get the table model
     if let Some(ui) = ui_weak.upgrade() {
-        let table_model_handle = ui.global::<AppData>().get_table_rows();
-
-        // Remove the item from the UI
-        if let Some(vec_model) = table_model_handle.as_any().downcast_ref::<VecModel<ModelRc<StandardListViewItem>>>() {
-            // Get the service name and email before removing for database deletion
-            // let service = vec_model.row_data(index, 0).unwrap().text();
-            // let email = vec_model.row_data(index, 1).unwrap().text();
-            let index_to_remove = index.as_str().parse::<i32>().unwrap();
-            println!("Removing entry at index: {}", index_to_remove);
-            if session.delete_entry(index_to_remove){
-                refresh_table_data(&ui_weak, session);
-            }else {
-                eprintln!("Failed to delete entry");
+        // Parse the index safely
+        match index.as_str().parse::<i32>() {
+            Ok(index_to_remove) => {
+                println!("Removing entry at index: {}", index_to_remove);
+                if session.delete_entry(index_to_remove) {
+                    refresh_table_data(&ui_weak, session);
+                } else {
+                    eprintln!("Failed to delete entry from database");
+                }
             }
-
+            Err(e) => {
+                eprintln!("Failed to parse index '{}': {}", index, e);
+            }
         }
     }
 }
