@@ -1,0 +1,169 @@
+import { ScrollView, Palette, StyleMetrics } from "std-widgets.slint";
+
+// Column definition matching StandardTableView
+export struct TableColumn {
+    title: string,
+    min_width: length,
+    horizontal-stretch: float,
+}
+
+// Internal column state with dynamic width
+struct ColumnState {
+    width: length,
+}
+
+export component CustomTableView inherits Rectangle {
+    // Properties matching StandardTableView interface
+    in property <[TableColumn]> columns;
+    in property <[[StandardListViewItem]]> rows;
+    out property <int> current-row: -1;
+
+    // Internal state for column widths
+    property <[ColumnState]> column-states: [
+        { width: 50px },
+        { width: 100px },
+        { width: 100px },
+        { width: 100px },
+        { width: 100px },
+        { width: 100px },
+    ];
+
+    // Callbacks
+    callback current-row-changed(int);
+    callback cell-pointer-event(int /* row */, PointerEvent, Point, int /* column */, string /* column-name */);
+
+    // Styling
+    background: Palette.alternate-background;
+
+    VerticalLayout {
+        spacing: 0px;
+
+        // Header row with resizable columns
+        header := Rectangle {
+            height: 36px;
+            background: Palette.background;
+
+            HorizontalLayout {
+                spacing: 0px;
+
+                for column[idx] in root.columns: Rectangle {
+                    width: root.column-states[idx].width;
+                    background: Palette.background;
+                    border-width: 1px;
+                    border-color: Palette.border;
+
+                    HorizontalLayout {
+                        padding: 8px;
+
+                        Text {
+                            text: column.title;
+                            font-weight: 700;
+                            color: Palette.foreground;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+
+                    // Resize handle
+                    resize-handle := Rectangle {
+                        x: parent.width - 4px;
+                        width: 8px;
+                        height: parent.height;
+
+                        TouchArea {
+                            width: parent.width;
+                            height: parent.height;
+                            mouse-cursor: ew-resize;
+
+                            property <length> start-width;
+                            property <length> start-mouse-x;
+
+                            moved => {
+                                if (self.pressed) {
+                                    root.column-states[idx].width = max(
+                                        column.min_width,
+                                        self.start-width + (self.mouse-x - self.start-mouse-x)
+                                    );
+                                }
+                            }
+
+                            pointer-event(event) => {
+                                if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                                    self.start-width = root.column-states[idx].width;
+                                    self.start-mouse-x = self.mouse-x;
+                                }
+                            }
+                        }
+
+                        // Visual indicator for resize handle
+                        Rectangle {
+                            x: 3px;
+                            width: 2px;
+                            height: parent.height;
+                            background: transparent;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Scrollable data rows
+        ScrollView {
+            VerticalLayout {
+                spacing: 0px;
+
+                for row[row-idx] in root.rows: Rectangle {
+                    height: 36px;
+                    background: row-idx == root.current-row ? Palette.selection-background :
+                               (Math.mod(row-idx, 2) == 0 ? Palette.alternate-background : Palette.background);
+
+                    HorizontalLayout {
+                        spacing: 0px;
+
+                        for cell[col-idx] in row: Rectangle {
+                            width: root.column-states[col-idx].width;
+                            border-width: 1px;
+                            border-color: Palette.border;
+
+                            HorizontalLayout {
+                                padding: 8px;
+
+                                Text {
+                                    text: cell.text;
+                                    color: row-idx == root.current-row ? Palette.selection-foreground : Palette.foreground;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: left;
+                                    overflow: elide;
+                                }
+                            }
+
+                            // Touch area for each cell
+                            TouchArea {
+                                pointer-event(event) => {
+                                    // Handle left click for row selection
+                                    if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                                        root.current-row = row-idx;
+                                        root.current-row-changed(row-idx);
+                                    }
+
+                                    // Forward all pointer events with cell information
+                                    root.cell-pointer-event(
+                                        row-idx,
+                                        event,
+                                        {
+                                            x: self.mouse-x + self.absolute-position.x,
+                                            y: self.mouse-y + self.absolute-position.y
+                                        },
+                                        col-idx,
+                                        root.columns[col-idx].title
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
