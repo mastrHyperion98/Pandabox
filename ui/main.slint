@@ -28,15 +28,19 @@ export component EntryWindow inherits Window {
     default-font-family: "C059";
     icon: @image-url("../resources/panda.png");
     in-out property <Page> current_page: Page.CreateDb;
+    in-out property <bool> auth-error: false;
+    in-out property <int> shake-trigger: 0;
 
     if current_page == Page.CreateDb: AuthView {
         button_text: "Create Database";
         placeholder_text: "Enter a strong master password";
         submitted(str) => { root.create_db_submitted(str) }
     }
-    if current_page == Page.Authenticate: AuthView {
+    if current_page == Page.Authenticate: auth-view := AuthView {
         button_text: "Authenticate";
         placeholder_text: "Enter your master password";
+        show-error <=> root.auth-error;
+        shake-state: root.shake-trigger;
         submitted(str) => { root.authenticate_submitted(str) }
     }
     if current_page == Page.Passlock:  ServiceView{
