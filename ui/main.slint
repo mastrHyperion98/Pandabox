@@ -2,7 +2,7 @@ import { Button } from "std-widgets.slint";
 import { AuthView } from "auth-view.slint";
 import { ServiceView, AppData, FormMode} from "services-view.slint";
 import { ServiceData } from "service-form.slint";
-
+import "./fonts/C059-Roman.otf";
 
 export enum Page {
     CreateDb,
@@ -17,14 +17,16 @@ export component EntryWindow inherits Window {
     callback authenticate_submitted(string);
     callback generate_password()->string;
     callback save_service(ServiceData, string, int);
+    callback delete_entry(string);
+    callback copy_to_clipboard(string, string);
 
     title: "PassLock";
     min-width: 1280px;
     min-height: 720px;
     full-screen: false;
-    default-font-size: 12px;
+    default-font-size: 16px;
+    default-font-family: "C059";
     icon: @image-url("../resources/panda.png");
-
     in-out property <Page> current_page: Page.CreateDb;
 
     if current_page == Page.CreateDb: AuthView {
@@ -40,5 +42,7 @@ export component EntryWindow inherits Window {
     if current_page == Page.Passlock:  ServiceView{
         generate_password() => { root.generate_password() }
         save_service(data, mode, row) => { root.save_service(data, mode, row) }
+        delete_entry(id) => { root.delete_entry(id) }
+        copy_to_clipboard(value, field_name) => { root.copy_to_clipboard(value, field_name) }
     }
 }

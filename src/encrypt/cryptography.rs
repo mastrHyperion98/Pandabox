@@ -13,6 +13,7 @@ use zeroize::Zeroize;
 const SALT_LENGTH: usize = 32;
 const PASSWORD_LENGTH: usize = 32;
 
+#[derive(Clone)]
 pub struct CryptEngine {
     key: Vec<u8>, // Store the Argon2 output (not the ChaCha20 key directly)
 }
@@ -81,6 +82,34 @@ impl CryptEngine {
         Ok(plaintext)
     }
 
+    pub fn encrypt_record(&self, record: &[u8], master_key: Vec<u8>) -> Result<Vec<u8>, ChaChaError> {
+        let key = Key::from_slice(master_key.as_slice());
+        let nonce = Self::generate_nonce();
+        let cipher = ChaCha20Poly1305::new(key);
+        let ciphertext = cipher.encrypt(&nonce, record.as_ref())?;
+        
+        // Prepend nonce to ciphertext so we can decrypt later
+        let mut result = nonce.to_vec();
+        result.extend_from_slice(&ciphertext);
+        Ok(result)
+    }
+
+    pub fn decrypt_record(&self, data: &[u8], master_key: Vec<u8>) -> Result<Vec<u8>, ChaChaError> {
+        let key = Key::from_slice(master_key.as_slice());
+        let cipher = ChaCha20Poly1305::new(key);
+        
+        // Extract nonce from the data (first 12 bytes)
+        if data.len() < 12 {
+            return Err(ChaChaError);
+        }
+        
+        let nonce = Nonce::from_slice(&data[..12]);
+        let ciphertext = &data[12..];
+        
+        let plaintext = cipher.decrypt(nonce, ciphertext)?;
+        Ok(plaintext)
+    }
+
     // Helper function to generate a random nonce
     fn generate_nonce() -> GenericArray<u8, U12> {
         let mut nonce = [0u8; 12]; // 12-bit nonce for ChaCha20Poly1305
@@ -119,8 +148,10 @@ impl CryptEngine {
         let mut bytes = password.into_bytes();
         use rand::seq::SliceRandom;
         bytes.shuffle(&mut rng);
-        
+
+        let password = unsafe { String::from_utf8_unchecked(bytes) };
         // Convert back to String (safe because we only use ASCII characters)
-        unsafe { String::from_utf8_unchecked(bytes) }
+        println!("{}", &password);
+        unsafe { password }
     }
 }

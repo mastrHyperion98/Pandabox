@@ -2,16 +2,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use crate::encrypt::cryptography::CryptEngine;
-use dirs::home_dir;
-use slint::{Model, ModelRc, SharedString, StandardListViewItem, VecModel, Weak};
+use slint::{Model, ModelRc, SharedString, StandardListViewItem, VecModel, Weak, Timer, TimerMode};
 use std::error::Error;
-use std::fs;
-use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+use zeroize::Zeroize;
 use crate::database::manager::DatabaseManager;
+use crate::session::session::Session;
+use arboard::Clipboard;
 
 mod database;
 mod encrypt;
+mod session;
+
 slint::include_modules!();
 
 const APP_NAME: &str = "Pandabox";
@@ -20,24 +23,31 @@ const APP_NAME: &str = "Pandabox";
 fn on_authenticate(
     data: SharedString,
     manager: Rc<DatabaseManager>
-) -> bool {
-    // Now we create the database
-    let (key, nonce, salt) = manager.get_master_record().unwrap();
-
-    let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
-    let mut status = false;
-    match engine.decrypt_master_key(nonce.as_slice(), key.as_ref()) {
-        Ok(_) => {
-            println!("Master key successfully decrypted");
-            status=true;
+) -> (bool, Option<Session>) {
+    match manager.get_master_record() {
+        Ok(mut master_record) => {
+            let engine = CryptEngine::new(data.as_str(), &master_record.salt).unwrap();
+            let mut status = false;
+            let mut session = None;
+            match engine.decrypt_master_key(&master_record.nonce, &master_record.encrypted_master_key) {
+                Ok(decrypted_key) => {
+                    master_record.encrypted_master_key.zeroize();
+                    master_record.nonce.zeroize();
+                    master_record.salt.zeroize();
+                    session = Some(Session::new(decrypted_key, engine.clone(), manager.clone()));
+                    status = true;
+                }
+                Err(_) => {
+                    println!("Failed to decrypt master key");
+                }
+            };
+            (status, session)
         }
-        Err(_) => {
-            println!("Failed to decrypt master key");
+        Err(e) => {
+            eprintln!("Failed to get master record: {}", e);
+            (false, None)
         }
-    };
-
-    status
-
+    }
 }
 
 fn make_db_callback<F, T>(
@@ -71,29 +81,37 @@ where
 
 fn create_db(manager: Rc<DatabaseManager>, data: SharedString) -> bool {
     // Before creating the database perhaps we should create the salt, nonce and encyrption key
-    let salt = CryptEngine::generate_salt();
+    let mut salt = CryptEngine::generate_salt();
     let engine = CryptEngine::new(data.as_str(), &salt).unwrap();
-    let master_key = CryptEngine::generate_master_key();
-    let (nonce, ciphertext) = engine.encrypt_master_key(master_key.as_ref()).unwrap();
+    let mut master_key = CryptEngine::generate_master_key();
+    let (mut nonce, mut ciphertext) = engine.encrypt_master_key(master_key.as_ref()).unwrap();
 
     println!("Creating DB");
-    let mut status = false;
-    match manager.create_master_table(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
+    match manager.create_master_record(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
         Ok(_) => {
-            println!("Created Master Table");
-            status=true;
+            println!("Created Master Record");
+            // Securely wipe sensitive data from memory now that it's committed to database
+            salt.zeroize();
+            master_key.zeroize();
+            nonce.zeroize();
+            ciphertext.zeroize();
+            true
         }
-        Err(_) => {
-            println!("Failed to create Master Table");
+        Err(e) => {
+            eprintln!("Failed to create Master Record: {}", e);
+            // Securely wipe sensitive data from memory
+            salt.zeroize();
+            master_key.zeroize();
+            false
         }
     }
-
-    status
 }
 
 fn handle_save_service(
+    session: &Session,
     form_mode: SharedString,
     current_index: i32,
+    record_id_str: SharedString,
     service: SharedString,
     email: SharedString,
     username: SharedString,
@@ -105,63 +123,88 @@ fn handle_save_service(
     if service.is_empty() || email.is_empty() || username.is_empty() || password.is_empty(){
         return;
     }
-    
+
     if let Some(ui) = ui_weak.upgrade() {
         println!("Form mode: {}", form_mode);
         println!("Current index: {}", current_index);
         if form_mode.as_str() == "Add" {
-            insert_entry(&service, &email, username, password, notes, ui);
+            insert_entry(session, &service, &email, username, password, notes, ui);
         }else{
-            update_entry(index, &service, &email, username, password, notes, ui);
+            let record_id = record_id_str.as_str().parse::<i32>().unwrap_or(0);
+            update_entry(session, index, record_id, &service, &email, username, password, notes, ui);
         }
-        
+
         println!("Service saved: {} - {}", service, email);
     }
 }
 
-fn update_entry(index: usize, service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
+fn update_entry(session: &Session, index: usize, record_id: i32, service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
     let table_model_handle = ui.global::<AppData>().get_table_rows();
-    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     let row_data: ModelRc<StandardListViewItem> = ModelRc::new(VecModel::from(vec![
+        StandardListViewItem::from(record_id.to_string().as_str()),
         StandardListViewItem::from(service.as_str()),
         StandardListViewItem::from(email.as_str()),
         StandardListViewItem::from(username.as_str()),
-        StandardListViewItem::from(password.as_str()),
+        StandardListViewItem::from("••••••••"), // Hide password in display
         StandardListViewItem::from(notes.as_str()),
-        StandardListViewItem::from(now.as_str()),
     ]));
-    
-    table_model_handle.set_row_data(index, row_data);
-    // TODO: WRITE TO DATABASE
+
+    if session.update_entry(record_id, service, email, &username, &password, &notes) {
+        table_model_handle.set_row_data(index, row_data);
+    }
 }
 
-fn insert_entry(service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
+fn insert_entry(session: &Session, service: &SharedString, email: &SharedString, username: SharedString, password: SharedString, notes: SharedString, ui: EntryWindow) {
     // Get current timestamp
     let table_model_handle = ui.global::<AppData>().get_table_rows();
     // This is the key: We "downcast" the generic model handle to the specific
     // type we know it is: a VecModel that holds rows.
     // This "unlocks" the .push() method.
     if let Some(vec_model) = table_model_handle.as_any().downcast_ref::<VecModel<ModelRc<StandardListViewItem>>>() {
-        // --- Your code to create the new row is perfect ---
-        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let row_data: Vec<slint::StandardListViewItem> = vec![
-            StandardListViewItem::from(service.as_str()),
-            StandardListViewItem::from(email.as_str()),
-            StandardListViewItem::from(username.as_str()),
-            StandardListViewItem::from(password.as_str()),
-            StandardListViewItem::from(notes.as_str()),
-            StandardListViewItem::from(now.as_str()),
-        ];
-        
-        // TODO: WRITE TO DATABASE
 
-        let new_row = ModelRc::new(VecModel::from(row_data));
-        // Now that we have the concrete `vec_model`, we can push the new row directly.
-        // The UI will update automatically.
-        vec_model.push(new_row);
+        // Insert the entry and get the created record with its ID
+        match session.insert_entry(service, email, &username, &password, &notes) {
+            Ok(record) => {
+                // Create a new row with the actual ID from the database
+                let row_data: Vec<slint::StandardListViewItem> = vec![
+                    StandardListViewItem::from(record.id.to_string().as_str()),
+                    StandardListViewItem::from(record.service.as_str()),
+                    StandardListViewItem::from(record.email.as_str()),
+                    StandardListViewItem::from(record.username.as_str()),
+                    StandardListViewItem::from("••••••••"), // Hide password in display
+                    StandardListViewItem::from(record.notes.as_str()),
+                ];
+
+                let new_row = ModelRc::new(VecModel::from(row_data));
+                vec_model.push(new_row);
+            }
+            Err(e) => {
+                eprintln!("Failed to insert entry: {}", e);
+            }
+        }
     } else {
         // This will print an error to your console if the type isn't what we expect.
         println!("Error: Could not access the table model as a VecModel.");
+    }
+}
+
+fn delete_entry(index: SharedString, session: &Session, ui_weak: Weak<EntryWindow>) {
+    // Get the table model
+    if let Some(ui) = ui_weak.upgrade() {
+        // Parse the index safely
+        match index.as_str().parse::<i32>() {
+            Ok(index_to_remove) => {
+                println!("Removing entry at index: {}", index_to_remove);
+                if session.delete_entry(index_to_remove) {
+                    refresh_table_data(&ui_weak, session);
+                } else {
+                    eprintln!("Failed to delete entry from database");
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to parse index '{}': {}", index, e);
+            }
+        }
     }
 }
 
@@ -169,40 +212,24 @@ fn create_db_submitted(input: SharedString, database_manager: Rc<DatabaseManager
     create_db(database_manager, input)
 }
 
-fn authenticate_submitted(input: SharedString, database_manager: Rc<DatabaseManager>) -> bool {
+fn authenticate_submitted(input: SharedString, database_manager: Rc<DatabaseManager>) -> (bool, Option<Session>) {
     on_authenticate(input, database_manager)
 }
 
-fn get_user_db_path_cross_platform(db_filename: &str) -> Option<PathBuf> {
-    if let Some(mut home) = home_dir() {
-        home.push(APP_NAME);
-        home.push(db_filename);
-        Some(home)
-    } else {
-        eprintln!("Warning: Could not determine the user's home directory.");
-        None
-    }
-}
-
 fn init_manager() -> (bool, Option<Rc<DatabaseManager>>) {
-    let db_file = "db.sqlite";
+    // The .env file is loaded by the DatabaseManager constructor, so we just need to create it.
+    let manager = Rc::new(DatabaseManager::new());
 
-    if let Some(db_path) = get_user_db_path_cross_platform(db_file) {
-        println!("Potential database path: {}", db_path.display());
-        if let Some(parent_dir) = db_path.parent() {
-            if !parent_dir.exists() {
-                println!("Directory {:?} does not exist. Creating...", parent_dir);
-                fs::create_dir_all(parent_dir).expect("TODO: panic message");
-            }
+    // Check if the master table has any records.
+    // This tells us if the database has been initialized.
+    match manager.check_master_table_exists() {
+        Ok(exists) => (exists, Some(manager)),
+        Err(e) => {
+            eprintln!("Failed to check master table: {}", e);
+            // This might happen if the database file is corrupt or migrations haven't run.
+            // For now, we'll treat it as if the DB doesn't exist.
+            (false, Some(manager))
         }
-        let path_str = db_path.to_str().unwrap_or_default().to_owned();
-        let manager = Rc::new(DatabaseManager::new(path_str.as_str()).unwrap());
-        
-        println!("Database file exists at: {}", db_path.display());
-        (manager.check_master_table().is_ok(), Some(manager))
-    } else {
-        println!("Could not determine the user's home directory.");
-        (false, None)
     }
 }
 
@@ -240,30 +267,221 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
         Page::Authenticate,
     ));
 
-    ui.on_authenticate_submitted(make_db_callback(
-        manager.clone(),
-        ui_weak.clone(),
-        authenticate_submitted,
-        Page::Passlock,
-    ));
-
-
+    // Create a session state that will be shared between the UI and the authentication callback
+    let session_state = Arc::new(Mutex::new(None::<Session>));
+    let session_state_for_auth = Arc::clone(&session_state);
+    let ui_weak_for_auth = ui_weak.clone();
+    
+    ui.on_authenticate_submitted(move |input| {
+        let ui_weak = ui_weak_for_auth.clone();
+        let session_state = session_state_for_auth.clone();
+        let (state, session) = authenticate_submitted(input, manager.clone());
+        if state {
+            if let Some(session) = session {
+                // Update the session state
+                *session_state.lock().unwrap() = Some(session);
+                
+                // Update UI
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_current_page(Page::Passlock);
+                    refresh_table_data(&ui_weak, session_state.lock().unwrap().as_ref().unwrap());
+                }
+            }
+        } else {
+            println!("Failed to authenticate");
+        }
+    });
     ui.on_generate_password(|| SharedString::from(CryptEngine::generate_random_password()));
 
     let ui_weak_for_save = ui_weak.clone();
-    ui.on_save_service(move |data, form, index| {
-        handle_save_service(
-            form,
-            index,
-            data.service,
-            data.email,
-            data.username,
-            data.password,
-            data.notes,
-            ui_weak_for_save.clone()
-        );
+    let session_state_for_save = Arc::clone(&session_state);
+    ui.on_save_service(move |data: ServiceData, mode: SharedString, row: i32| {
+        let session_guard = session_state_for_save.lock().unwrap();
+        if let Some(session) = &*session_guard {
+            // Extract the service data from the ServiceData struct
+            handle_save_service(
+                session, 
+                mode, 
+                row,
+                data.id, 
+                data.service, 
+                data.email, 
+                data.username, 
+                data.password, 
+                data.notes, 
+                ui_weak_for_save.clone()
+            );
+        } else {
+            println!("No active session found");
+        }
     });
 
-    ui.run()?;
+    let ui_weak_for_delete = ui_weak.clone();
+    let session_state_for_delete = Arc::clone(&session_state);
+    ui.on_delete_entry(move |index: SharedString | {
+        let session_guard = session_state_for_delete.lock().unwrap();
+        if let Some(session) = &*session_guard {
+            // Extract the service data from the ServiceData struct
+            delete_entry(
+                index,
+                session,
+                ui_weak_for_delete.clone()
+            );
+        } else {
+            println!("No active session found");
+        }
+    });
+
+    let ui_weak_for_clipboard = ui_weak.clone();
+    let session_state_for_clipboard = Arc::clone(&session_state);
+    ui.on_copy_to_clipboard(move |value: SharedString, field_name: SharedString| {
+        let session_guard = session_state_for_clipboard.lock().unwrap();
+        if let Some(session) = &*session_guard {
+            copy_to_clipboard_handler(value, field_name, ui_weak_for_clipboard.clone(), session);
+        } else {
+            println!("No active session found for clipboard operation");
+        }
+    });
+
+    ui.run().unwrap();
+
     Ok(())
+}
+
+fn copy_to_clipboard_handler(value: SharedString, field_name: SharedString, ui_weak: Weak<EntryWindow>, session: &Session) {
+    // Fetch and decrypt password if we're copying a password field
+    let value_to_copy = if field_name.as_str() == "Password" {
+        // Parse the record ID
+        let record_id = match value.as_str().parse::<i32>() {
+            Ok(id) => id,
+            Err(e) => {
+                eprintln!("Failed to parse record ID: {}", e);
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.global::<AppData>().set_toast_message(SharedString::from("Invalid record ID"));
+                    ui.global::<AppData>().set_show_toast(true);
+                    
+                    let ui_weak_timer = ui.as_weak();
+                    slint::invoke_from_event_loop(move || {
+                        let timer = Timer::default();
+                        timer.start(TimerMode::SingleShot, std::time::Duration::from_secs(2), move || {
+                            if let Some(ui) = ui_weak_timer.upgrade() {
+                                ui.global::<AppData>().set_show_toast(false);
+                            }
+                        });
+                        std::mem::forget(timer);
+                    }).ok();
+                }
+                return;
+            }
+        };
+
+        // Fetch from database and decrypt
+        match session.get_decrypted_password(record_id) {
+            Ok(decrypted) => decrypted,
+            Err(e) => {
+                eprintln!("Failed to fetch/decrypt password: {}", e);
+                // Show error toast
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.global::<AppData>().set_toast_message(SharedString::from("Failed to decrypt password"));
+                    ui.global::<AppData>().set_show_toast(true);
+                    
+                    let ui_weak_timer = ui.as_weak();
+                    slint::invoke_from_event_loop(move || {
+                        let timer = Timer::default();
+                        timer.start(TimerMode::SingleShot, std::time::Duration::from_secs(2), move || {
+                            if let Some(ui) = ui_weak_timer.upgrade() {
+                                ui.global::<AppData>().set_show_toast(false);
+                            }
+                        });
+                        std::mem::forget(timer);
+                    }).ok();
+                }
+                return;
+            }
+        }
+    } else {
+        value.to_string()
+    };
+
+    // Copy to clipboard
+    match Clipboard::new() {
+        Ok(mut clipboard) => {
+            match clipboard.set_text(&value_to_copy) {
+                Ok(_) => {
+                    println!("Copied {} to clipboard", field_name);
+                    
+                    // Keep clipboard alive for a bit to ensure clipboard managers can read it
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        drop(clipboard);
+                    });
+                    
+                    // Show toast notification
+                    if let Some(ui) = ui_weak.upgrade() {
+                        let message = format!("{} copied!", field_name);
+                        
+                        // Set the toast message and show it
+                        ui.global::<AppData>().set_toast_message(SharedString::from(message));
+                        ui.global::<AppData>().set_show_toast(true);
+                        
+                        // Create a timer to hide the toast after 2 seconds
+                        let ui_weak_timer = ui.as_weak();
+                        slint::invoke_from_event_loop(move || {
+                            let timer = Timer::default();
+                            timer.start(TimerMode::SingleShot, std::time::Duration::from_secs(2), move || {
+                                if let Some(ui) = ui_weak_timer.upgrade() {
+                                    ui.global::<AppData>().set_show_toast(false);
+                                }
+                            });
+                            // Keep timer alive by leaking it (it will auto-cleanup after firing)
+                            std::mem::forget(timer);
+                        }).ok();
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to copy to clipboard: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to initialize clipboard: {}", e);
+        }
+    }
+}
+
+fn refresh_table_data(ui_weak: &Weak<EntryWindow>, session: &Session) {
+    if let Some(ui) = ui_weak.upgrade() {
+        println!("Refreshing table data...");
+        
+        // Get all records through the session
+        match session.get_all_records() {
+            Ok(records) => {
+                println!("Retrieved {} records from database", records.len());
+                
+                // Create a new model for the table
+                let table_model = Rc::new(VecModel::default());
+                
+                // Add each record to the model
+                for record in records {
+                    let row = vec![
+                        StandardListViewItem::from(record.id.to_string().as_str()),
+                        StandardListViewItem::from(record.service.as_str()),
+                        StandardListViewItem::from(record.email.as_str()),
+                        StandardListViewItem::from(record.username.as_str()),
+                        StandardListViewItem::from("••••••••"), // Hide password in display
+                        StandardListViewItem::from(record.notes.as_str()),
+                    ];
+                    
+                    let row_model = Rc::new(VecModel::from(row));
+                    table_model.push(row_model.into());
+                }
+                
+                // Update the UI with the new model
+                ui.global::<AppData>().set_table_rows(ModelRc::from(table_model));
+            }
+            Err(e) => {
+                eprintln!("Failed to fetch records: {}", e);
+            }
+        }
+    }
 }
