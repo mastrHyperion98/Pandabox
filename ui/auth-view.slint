@@ -3,11 +3,19 @@ import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
 export component AuthView {
     in property <string> button_text;
     in property <string> placeholder_text;
-    in property <bool> is_error: false;
-    in property <string> error_msg: "";
+    in-out property <bool> show-error: false;
+    in-out property <int> shake-state: 0;
 
     in-out property <string> passfield: "";
     callback submitted(string);
+    
+    // Shake animation sequence
+    property <length> shake-offset: shake-state == 1 ? 10px : 
+                                     shake-state == 2 ? -10px :
+                                     shake-state == 3 ? 8px :
+                                     shake-state == 4 ? -8px :
+                                     shake-state == 5 ? 4px :
+                                     shake-state == 6 ? -4px : 0px;
 
     VerticalLayout {
         alignment: center;
@@ -26,14 +34,41 @@ export component AuthView {
             Row {
                 HorizontalLayout {
                     alignment: center;
-                    LineEdit {
-                        min-width: 400px;
-                        min-height: 50px;
-                        text <=> root.passfield;
-                        input-type: InputType.password;
-                        placeholder-text: root.placeholder_text;
-                        accepted(text) => {
-                            root.submitted(root.passfield);
+                    
+                    Rectangle {
+                        width: 400px;
+                        height: 50px;
+                        
+                        // Inner container for shake animation
+                        password-container := Rectangle {
+                            width: 100%;
+                            height: 100%;
+                            x: root.shake-offset;
+                            border-radius: 4px;
+                            border-width: 2px;
+                            border-color: root.show-error ? #ff5555 : transparent;
+                            
+                            // Smooth shake animation
+                            animate x {
+                                duration: 80ms;
+                                easing: ease-out;
+                            }
+                            
+                            // Red border fade animation
+                            animate border-color {
+                                duration: 2000ms;
+                            }
+                            
+                            password-field := LineEdit {
+                                width: 100%;
+                                height: 100%;
+                                text <=> root.passfield;
+                                input-type: InputType.password;
+                                placeholder-text: root.placeholder_text;
+                                accepted(text) => {
+                                    root.submitted(root.passfield);
+                                }
+                            }
                         }
                     }
                 }
@@ -53,17 +88,6 @@ export component AuthView {
                 }
             }
 
-            Row {
-                HorizontalLayout{
-                    alignment: center;
-                    Text {
-                        font-size: 18px;
-                        text: root.error_msg;
-                        color: #ff5555;
-                        visible: root.is_error;
-                    }
-                }
-            }
         }
     }
 }

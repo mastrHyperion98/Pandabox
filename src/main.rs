@@ -283,12 +283,48 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                 
                 // Update UI
                 if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_auth_error(false);
                     ui.set_current_page(Page::Passlock);
                     refresh_table_data(&ui_weak, session_state.lock().unwrap().as_ref().unwrap());
                 }
             }
         } else {
             println!("Failed to authenticate");
+            // Trigger shake animation
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_auth_error(true);
+                
+                // Trigger shake sequence
+                let ui_weak_shake = ui.as_weak();
+                std::thread::spawn(move || {
+                    for i in 1..=6 {
+                        std::thread::sleep(std::time::Duration::from_millis(80));
+                        let ui_weak_clone = ui_weak_shake.clone();
+                        slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = ui_weak_clone.upgrade() {
+                                ui.set_shake_trigger(i);
+                            }
+                        }).ok();
+                    }
+                    // Reset shake
+                    std::thread::sleep(std::time::Duration::from_millis(80));
+                    let ui_weak_clone = ui_weak_shake.clone();
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak_clone.upgrade() {
+                            ui.set_shake_trigger(0);
+                        }
+                    }).ok();
+                    
+                    // Clear error after 2 seconds
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    let ui_weak_clone = ui_weak_shake.clone();
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak_clone.upgrade() {
+                            ui.set_auth_error(false);
+                        }
+                    }).ok();
+                });
+            }
         }
     });
     ui.on_generate_password(|| SharedString::from(CryptEngine::generate_random_password()));
