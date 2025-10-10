@@ -32,6 +32,7 @@ export component ServiceView {
     in-out property <FormMode> form-mode: FormMode.Add;
     in-out property <ServiceData> current-service-data;
     property <int> current-row: -1;
+    in-out property <bool> show-about: false;
 
     // Helper property to display form mode text
     property <string> form-mode-text: root.form-mode == FormMode.Add ? "Add" : "Edit";
@@ -41,11 +42,12 @@ export component ServiceView {
     callback save_service(ServiceData, string, int);
     callback delete_entry(string);
     callback copy_to_clipboard(string, string);
+    callback save_all();
+    callback import_csv();
+    callback export_csv();
 
     // Toast notification
     if AppData.show-toast: Rectangle {
-        width: 200px;
-        height: 50px;
         x: (parent.width - self.width) / 2;
         y: parent.height - 100px;
         background: #2d2d2d;
@@ -54,8 +56,10 @@ export component ServiceView {
         drop-shadow-color: #00000080;
 
         HorizontalLayout {
-            padding: 12px;
-            alignment: center;
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-top: 12px;
+            padding-bottom: 12px;
             
             Text {
                 text: AppData.toast-message;
@@ -100,6 +104,129 @@ export component ServiceView {
                     root.show-context-menu = false;
                     root.copy_to_clipboard(root.current-service-data.id, "Password");
                     menu.close();
+                }
+            }
+        }
+    }
+
+    // About Dialog
+    if root.show-about: Rectangle {
+        width: 100%;
+        height: 100%;
+        z: 1000;
+        background: #00000080;
+        
+        TouchArea {
+            clicked => {
+                root.show-about = false;
+            }
+        }
+        
+        Rectangle {
+            width: 600px;
+            height: 500px;
+            background: Palette.background;
+            border-radius: 12px;
+            drop-shadow-blur: 20px;
+            drop-shadow-color: #00000060;
+            
+            VerticalLayout {
+                padding: 30px;
+                spacing: 20px;
+                
+                HorizontalLayout {
+                    Text {
+                        text: "About Pandabox";
+                        font-size: 24px;
+                        font-weight: 700;
+                    }
+                    Rectangle { }
+                    Button {
+                        text: "✕";
+                        clicked => {
+                            root.show-about = false;
+                        }
+                    }
+                }
+                
+                Rectangle {
+                    height: 2px;
+                    background: Palette.border;
+                }
+                
+                ScrollView {
+                    VerticalLayout {
+                        spacing: 15px;
+                        
+                        Text {
+                            text: "Pandabox - Secure Password Manager";
+                            font-size: 18px;
+                            font-weight: 600;
+                            wrap: word-wrap;
+                        }
+                        
+                        Text {
+                            text: "Version: 0.1.0";
+                            font-size: 14px;
+                            wrap: word-wrap;
+                        }
+                        
+                        Text {
+                            text: "Author: mastrHyperion98";
+                            font-size: 14px;
+                            wrap: word-wrap;
+                        }
+                        
+                        Text {
+                            text: "Copyright © 2025";
+                            font-size: 14px;
+                            wrap: word-wrap;
+                        }
+                        
+                        Rectangle { height: 10px; }
+                        
+                        Text {
+                            text: "License";
+                            font-size: 16px;
+                            font-weight: 600;
+                            wrap: word-wrap;
+                        }
+                        
+                        Text {
+                            text: "This project is licensed under the MIT License. Permission is granted to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software.";
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+                        
+                        Rectangle { height: 10px; }
+                        
+                        Text {
+                            text: "Credits";
+                            font-size: 16px;
+                            font-weight: 600;
+                            wrap: word-wrap;
+                        }
+                        
+                        Text {
+                            text: "Icons provided by Anastassiya Motokhova at flaticon.com";
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+                        
+                        Text {
+                            text: "Built with ❤️ using Rust and Slint";
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+                        
+                        Rectangle { height: 10px; }
+                        
+                        Text {
+                            text: "GitHub: github.com/mastrHyperion98/Pandabox";
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+                    }
                 }
             }
         }
