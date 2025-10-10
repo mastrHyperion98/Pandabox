@@ -10,6 +10,11 @@ use zeroize::Zeroize;
 use crate::database::manager::DatabaseManager;
 use crate::session::session::Session;
 use arboard::Clipboard;
+use std::fs::File;
+use std::io::BufReader;
+use csv::{Writer, Reader};
+use serde::{Serialize, Deserialize};
+use rfd::FileDialog;
 
 mod database;
 mod encrypt;
@@ -18,6 +23,15 @@ mod session;
 slint::include_modules!();
 
 const APP_NAME: &str = "Pandabox";
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CsvRecord {
+    service: String,
+    email: String,
+    username: String,
+    password: String,
+    notes: String,
+}
 
 // Assume you have a function to write to your database
 fn on_authenticate(
@@ -233,6 +247,169 @@ fn init_manager() -> (bool, Option<Rc<DatabaseManager>>) {
     }
 }
 
+fn export_csv_handler(session: &Session, ui_weak: Weak<EntryWindow>) {
+    // Open file dialog to select save location
+    let file_path = FileDialog::new()
+        .set_file_name("pandabox_export.csv")
+        .add_filter("CSV Files", &["csv"])
+        .add_filter("All Files", &["*"])
+        .save_file();
+    
+    if let Some(path) = file_path {
+        // Get all records
+        match session.get_all_records() {
+            Ok(records) => {
+            match File::create(&path) {
+                Ok(file) => {
+                    let mut wtr = Writer::from_writer(file);
+                    
+                    // Write each record with decrypted password
+                    for record in records {
+                        match session.decrypt_password(&record.password) {
+                            Ok(decrypted_password) => {
+                                let csv_record = CsvRecord {
+                                    service: record.service,
+                                    email: record.email,
+                                    username: record.username,
+                                    password: decrypted_password,
+                                    notes: record.notes,
+                                };
+                                
+                                if let Err(e) = wtr.serialize(csv_record) {
+                                    eprintln!("Failed to write record: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to decrypt password for {}: {}", record.service, e);
+                            }
+                        }
+                    }
+                    
+                    wtr.flush().ok();
+                    println!("Exported to: {}", path.display());
+                    
+                    // Show success toast
+                    if let Some(ui) = ui_weak.upgrade() {
+                        let msg = format!("Exported to {}", path.file_name().unwrap_or_default().to_string_lossy());
+                        ui.global::<AppData>().set_toast_message(SharedString::from(msg));
+                        ui.global::<AppData>().set_show_toast(true);
+                        
+                        let ui_weak_timer = ui.as_weak();
+                        let timer = Timer::default();
+                        timer.start(TimerMode::SingleShot, std::time::Duration::from_secs(3), move || {
+                            if let Some(ui) = ui_weak_timer.upgrade() {
+                                ui.global::<AppData>().set_show_toast(false);
+                            }
+                        });
+                        std::mem::forget(timer);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to create CSV file: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to get records: {}", e);
+        }
+    }
+    } else {
+        println!("Export cancelled by user");
+    }
+}
+
+fn import_csv_handler(session: &Session, ui_weak: Weak<EntryWindow>) {
+    // Open file dialog to select CSV file
+    let file_path = FileDialog::new()
+        .add_filter("CSV Files", &["csv"])
+        .add_filter("All Files", &["*"])
+        .pick_file();
+    
+    if let Some(path) = file_path {
+    match File::open(&path) {
+        Ok(file) => {
+            let mut rdr = Reader::from_reader(BufReader::new(file));
+            let mut count = 0;
+            
+            for result in rdr.deserialize() {
+                match result {
+                    Ok(record) => {
+                        let csv_record: CsvRecord = record;
+                        match session.insert_entry(
+                            &SharedString::from(csv_record.service),
+                            &SharedString::from(csv_record.email),
+                            &SharedString::from(csv_record.username),
+                            &SharedString::from(csv_record.password),
+                            &SharedString::from(csv_record.notes),
+                        ) {
+                            Ok(_) => count += 1,
+                            Err(e) => eprintln!("Failed to import record: {}", e),
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to parse CSV record: {}", e),
+                }
+            }
+            
+            println!("Imported {} records", count);
+            
+            // Refresh table
+            refresh_table_data(&ui_weak, session);
+            
+            // Show success toast
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.global::<AppData>().set_toast_message(SharedString::from(format!("Imported {} records", count)));
+                ui.global::<AppData>().set_show_toast(true);
+                
+                let ui_weak_timer = ui.as_weak();
+                let timer = Timer::default();
+                timer.start(TimerMode::SingleShot, std::time::Duration::from_secs(3), move || {
+                    if let Some(ui) = ui_weak_timer.upgrade() {
+                        ui.global::<AppData>().set_show_toast(false);
+                    }
+                });
+                std::mem::forget(timer);
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to open CSV file: {}", e);
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.global::<AppData>().set_toast_message(SharedString::from("Failed to open CSV file"));
+                ui.global::<AppData>().set_show_toast(true);
+                
+                let ui_weak_timer = ui.as_weak();
+                let timer = Timer::default();
+                timer.start(TimerMode::SingleShot, std::time::Duration::from_secs(3), move || {
+                    if let Some(ui) = ui_weak_timer.upgrade() {
+                        ui.global::<AppData>().set_show_toast(false);
+                    }
+                });
+                std::mem::forget(timer);
+            }
+        }
+    }
+    } else {
+        println!("Import cancelled by user");
+    }
+}
+
+fn save_all_handler(ui_weak: Weak<EntryWindow>) {
+    // SQLite auto-commits, but we can show a confirmation
+    if let Some(ui) = ui_weak.upgrade() {
+        ui.global::<AppData>().set_toast_message(SharedString::from("All data saved!"));
+        ui.global::<AppData>().set_show_toast(true);
+        
+        let ui_weak_timer = ui.as_weak();
+        let timer = Timer::default();
+        timer.start(TimerMode::SingleShot, std::time::Duration::from_secs(2), move || {
+            if let Some(ui) = ui_weak_timer.upgrade() {
+                ui.global::<AppData>().set_show_toast(false);
+            }
+        });
+        std::mem::forget(timer);
+    }
+    println!("Database saved");
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let (db_exist, manager) = init_manager();
 
@@ -377,6 +554,29 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
         } else {
             println!("No active session found for clipboard operation");
         }
+    });
+
+    let ui_weak_for_export = ui_weak.clone();
+    let session_state_for_export = Arc::clone(&session_state);
+    ui.on_export_csv(move || {
+        let session_guard = session_state_for_export.lock().unwrap();
+        if let Some(session) = &*session_guard {
+            export_csv_handler(session, ui_weak_for_export.clone());
+        }
+    });
+
+    let ui_weak_for_import = ui_weak.clone();
+    let session_state_for_import = Arc::clone(&session_state);
+    ui.on_import_csv(move || {
+        let session_guard = session_state_for_import.lock().unwrap();
+        if let Some(session) = &*session_guard {
+            import_csv_handler(session, ui_weak_for_import.clone());
+        }
+    });
+
+    let ui_weak_for_save = ui_weak.clone();
+    ui.on_save_all(move || {
+        save_all_handler(ui_weak_for_save.clone());
     });
 
     ui.run().unwrap();
