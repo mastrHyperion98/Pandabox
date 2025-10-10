@@ -204,7 +204,7 @@ fn insert_entry(session: &Session, service: &SharedString, email: &SharedString,
 
 fn delete_entry(index: SharedString, session: &Session, ui_weak: Weak<EntryWindow>) {
     // Get the table model
-    if let Some(ui) = ui_weak.upgrade() {
+    if let Some(_ui) = ui_weak.upgrade() {
         // Parse the index safely
         match index.as_str().parse::<i32>() {
             Ok(index_to_remove) => {
@@ -639,8 +639,16 @@ fn copy_to_clipboard_handler(value: SharedString, field_name: SharedString, ui_w
         value.to_string()
     };
 
-    // Copy to clipboard
-    match Clipboard::new() {
+    // Copy to clipboard with retry logic for Flatpak environments
+    let mut clipboard_result = Clipboard::new();
+    
+    // If first attempt fails, try again after a short delay (helps with X11 timeout issues)
+    if clipboard_result.is_err() {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        clipboard_result = Clipboard::new();
+    }
+    
+    match clipboard_result {
         Ok(mut clipboard) => {
             match clipboard.set_text(&value_to_copy) {
                 Ok(_) => {
@@ -676,12 +684,32 @@ fn copy_to_clipboard_handler(value: SharedString, field_name: SharedString, ui_w
                 }
                 Err(e) => {
                     eprintln!("Failed to copy to clipboard: {}", e);
+                    show_error_toast(&ui_weak, "Failed to copy to clipboard");
                 }
             }
         }
         Err(e) => {
             eprintln!("Failed to initialize clipboard: {}", e);
+            show_error_toast(&ui_weak, "Clipboard unavailable in sandbox");
         }
+    }
+}
+
+fn show_error_toast(ui_weak: &Weak<EntryWindow>, message: &str) {
+    if let Some(ui) = ui_weak.upgrade() {
+        ui.global::<AppData>().set_toast_message(SharedString::from(message));
+        ui.global::<AppData>().set_show_toast(true);
+        
+        let ui_weak_timer = ui.as_weak();
+        slint::invoke_from_event_loop(move || {
+            let timer = Timer::default();
+            timer.start(TimerMode::SingleShot, std::time::Duration::from_secs(3), move || {
+                if let Some(ui) = ui_weak_timer.upgrade() {
+                    ui.global::<AppData>().set_show_toast(false);
+                }
+            });
+            std::mem::forget(timer);
+        }).ok();
     }
 }
 

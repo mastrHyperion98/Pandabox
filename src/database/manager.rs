@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::fs;
 use std::env;
-use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use dotenvy::dotenv;
@@ -37,7 +36,11 @@ impl DatabaseManager {
         let database_url = db_path.to_str().expect("Invalid database path").to_string();
         
         // Set the DATABASE_URL environment variable for Diesel CLI
-        std::env::set_var("DATABASE_URL", &database_url);
+        // SAFETY: This is safe because we're setting it before any other threads are spawned
+        // and it's only used for database connection initialization
+        unsafe {
+            std::env::set_var("DATABASE_URL", &database_url);
+        }
         
         // Create or connect to the database
         let mut connection = SqliteConnection::establish(&database_url)
