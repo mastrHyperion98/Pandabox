@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Pandabox
+GenericName=Password Manager
+Comment=Secure password manager with encryption
+Exec=pandabox
+Icon=com.github.mastrHyperion98.Pandabox
+Terminal=false
+Type=Application
+Categories=Utility;Security;
+Keywords=password;security;encryption;vault;
+StartupNotify=true

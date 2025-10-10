@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.github.mastrHyperion98.Pandabox</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Pandabox</name>
+  <summary>Secure password manager with encryption</summary>
+  
+  <description>
+    <p>
+      Pandabox is a secure, open-source password manager built with Rust, offering robust encryption and a user-friendly interface.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Secure password storage using industry-standard encryption</li>
+      <li>Master password protection with Argon2 key derivation</li>
+      <li>Modern, responsive UI</li>
+      <li>Secure password generation</li>
+      <li>Import/Export functionality</li>
+      <li>Cross-platform compatibility</li>
+    </ul>
+  </description>
+  
+  <launchable type="desktop-id">com.github.mastrHyperion98.Pandabox.desktop</launchable>
+  
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main window showing password vault</caption>
+    </screenshot>
+  </screenshots>
+  
+  <url type="homepage">https://github.com/mastrHyperion98/Pandabox</url>
+  <url type="bugtracker">https://github.com/mastrHyperion98/Pandabox/issues</url>
+  
+  <developer_name>mastrHyperion98</developer_name>
+  
+  <releases>
+    <release version="0.1.0" date="2025-01-10">
+      <description>
+        <p>Initial release</p>
+        <ul>
+          <li>Secure password storage with ChaCha20-Poly1305 encryption</li>
+          <li>Argon2id master password hashing</li>
+          <li>Modern UI with Slint</li>
+          <li>CSV import/export functionality</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+  
+  <content_rating type="oars-1.1" />
+</component>

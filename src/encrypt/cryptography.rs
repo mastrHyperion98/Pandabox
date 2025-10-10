@@ -150,6 +150,6 @@ impl CryptEngine {
         bytes.shuffle(&mut rng);
 
         let password = unsafe { String::from_utf8_unchecked(bytes) };
-        unsafe { password }
+        password
     }
 }

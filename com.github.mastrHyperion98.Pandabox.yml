@@ -1,0 +1,35 @@
+app-id: com.github.mastrHyperion98.Pandabox
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: pandabox-wrapper.sh
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=home
+  - --persist=.local/share/pandabox
+
+modules:
+  - name: pandabox
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/pandabox/cargo
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --verbose
+      - install -Dm755 ./target/release/Pandabox -t /app/bin/
+      - install -Dm755 ./pandabox-wrapper.sh /app/bin/pandabox-wrapper.sh
+      - install -Dm644 ./resources/panda.png /app/share/icons/hicolor/256x256/apps/com.github.mastrHyperion98.Pandabox.png
+      - install -Dm644 ./com.github.mastrHyperion98.Pandabox.desktop -t /app/share/applications/
+      - install -Dm644 ./com.github.mastrHyperion98.Pandabox.metainfo.xml -t /app/share/metainfo/
+    sources:
+      - type: dir
+        path: .
+      - cargo-sources.json
