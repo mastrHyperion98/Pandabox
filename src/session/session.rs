@@ -96,4 +96,28 @@ impl Session {
             }
         }
     }
+
+    /// Decrypt a password on-demand (for copying to clipboard)
+    pub fn decrypt_password(&self, encrypted_password_base64: &str) -> Result<String, Box<dyn std::error::Error>> {
+        // Decode from base64
+        let encrypted_bytes = base64::engine::general_purpose::STANDARD.decode(encrypted_password_base64)?;
+        
+        // Decrypt using the session key
+        let decrypted_bytes = self.crypto_engine.decrypt_record(&encrypted_bytes, self.get_key().clone())
+            .map_err(|e| format!("Decryption error: {:?}", e))?;
+        
+        // Convert to string
+        let password = String::from_utf8(decrypted_bytes)?;
+        
+        Ok(password)
+    }
+
+    /// Get encrypted password from database by record ID and decrypt it
+    pub fn get_decrypted_password(&self, record_id: i32) -> Result<String, Box<dyn std::error::Error>> {
+        // Fetch the record from database
+        let record = self.database_manager.get_record_by_id(record_id)?;
+        
+        // Decrypt the password
+        self.decrypt_password(&record.password)
+    }
 }

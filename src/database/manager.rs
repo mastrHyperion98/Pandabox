@@ -147,6 +147,13 @@ impl DatabaseManager {
         records.load::<Record>(&mut connection)
     }
 
+    pub fn get_record_by_id(&self, record_id: i32) -> QueryResult<Record> {
+        use crate::database::schema::records::dsl::*;
+        
+        let mut connection = self.establish_connection();
+        records.find(record_id).first::<Record>(&mut connection)
+    }
+
     pub fn update_record(
         &self,
         record_id: i32,

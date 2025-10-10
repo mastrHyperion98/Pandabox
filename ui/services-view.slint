@@ -5,6 +5,8 @@ import { ServiceForm, ServiceData } from "service-form.slint";
 // Global state for the application's table data
 export global AppData {
     in-out property <[[StandardListViewItem]]> table-rows: [];
+    in-out property <string> toast-message: "";
+    in-out property <bool> show-toast: false;
 }
 
 // View state management
@@ -38,9 +40,35 @@ export component ServiceView {
     callback generate_password() -> string;
     callback save_service(ServiceData, string, int);
     callback delete_entry(string);
+    callback copy_to_clipboard(string, string);
 
-    // Main content area - Table View
-       // Context menu for right-click actions
+    // Toast notification
+    if AppData.show-toast: Rectangle {
+        width: 200px;
+        height: 50px;
+        x: (parent.width - self.width) / 2;
+        y: parent.height - 100px;
+        background: #2d2d2d;
+        border-radius: 8px;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: #00000080;
+
+        HorizontalLayout {
+            padding: 12px;
+            alignment: center;
+            
+            Text {
+                text: AppData.toast-message;
+                color: #ffffff;
+                font-size: 14px;
+            }
+        }
+
+        // Auto-hide after 2 seconds
+        animate opacity { duration: 300ms; }
+    }
+
+    // Context menu for right-click actions
     menu := ContextMenuArea {
         width: root.width;
         height: root.height;
@@ -51,10 +79,27 @@ export component ServiceView {
 
         Menu {
             MenuItem {
-                title: "Copy";
+                title: "Copy Email";
                 activated => {
                     root.show-context-menu = false;
-                    generate_password();
+                    root.copy_to_clipboard(root.current-service-data.email, "Email");
+                    menu.close();
+                }
+            }
+            MenuItem {
+                title: "Copy Username";
+                activated => {
+                    root.show-context-menu = false;
+                    root.copy_to_clipboard(root.current-service-data.username, "Username");
+                    menu.close();
+                }
+            }
+            MenuItem {
+                title: "Copy Password";
+                activated => {
+                    root.show-context-menu = false;
+                    root.copy_to_clipboard(root.current-service-data.id, "Password");
+                    menu.close();
                 }
             }
         }
@@ -101,6 +146,121 @@ export component ServiceView {
             }
         }
 
+        // Copy toolbar - shown when a row is selected
+        if root.current-row != -1: Rectangle {
+            height: 60px;
+            background: Palette.alternate-background;
+            border-radius: 8px;
+            drop-shadow-blur: 4px;
+            drop-shadow-color: #00000020;
+
+            HorizontalLayout {
+                padding: 12px;
+                spacing: 12px;
+                alignment: center;
+
+                Text {
+                    text: "Quick Copy:";
+                    font-size: 14px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+
+                // Copy Email button
+                Rectangle {
+                    width: 120px;
+                    height: 36px;
+                    background: email-touch.has-hover ? Palette.accent-background.darker(0.1) : Palette.accent-background;
+                    border-radius: 6px;
+                    
+                    email-touch := TouchArea {
+                        clicked => {
+                            root.copy_to_clipboard(root.current-service-data.email, "Email");
+                        }
+                    }
+
+                    HorizontalLayout {
+                        padding: 8px;
+                        spacing: 6px;
+                        alignment: center;
+
+                        Text {
+                            text: "📧";
+                            font-size: 16px;
+                        }
+                        Text {
+                            text: "Email";
+                            color: Palette.accent-foreground;
+                            font-size: 13px;
+                            font-weight: 500;
+                        }
+                    }
+                }
+
+                // Copy Username button
+                Rectangle {
+                    width: 140px;
+                    height: 36px;
+                    background: username-touch.has-hover ? Palette.accent-background.darker(0.1) : Palette.accent-background;
+                    border-radius: 6px;
+                    
+                    username-touch := TouchArea {
+                        clicked => {
+                            root.copy_to_clipboard(root.current-service-data.username, "Username");
+                        }
+                    }
+
+                    HorizontalLayout {
+                        padding: 8px;
+                        spacing: 6px;
+                        alignment: center;
+
+                        Text {
+                            text: "👤";
+                            font-size: 16px;
+                        }
+                        Text {
+                            text: "Username";
+                            color: Palette.accent-foreground;
+                            font-size: 13px;
+                            font-weight: 500;
+                        }
+                    }
+                }
+
+                // Copy Password button
+                Rectangle {
+                    width: 140px;
+                    height: 36px;
+                    background: password-touch.has-hover ? Palette.accent-background.darker(0.1) : Palette.accent-background;
+                    border-radius: 6px;
+                    
+                    password-touch := TouchArea {
+                        clicked => {
+                            root.copy_to_clipboard(root.current-service-data.id, "Password");
+                        }
+                    }
+
+                    HorizontalLayout {
+                        padding: 8px;
+                        spacing: 6px;
+                        alignment: center;
+
+                        Text {
+                            text: "🔑";
+                            font-size: 16px;
+                        }
+                        Text {
+                            text: "Password";
+                            color: Palette.accent-foreground;
+                            font-size: 13px;
+                            font-weight: 500;
+                        }
+                    }
+                }
+            }
+        }
+
         // Main data table
         table := StandardTableView {
             columns: [
@@ -121,7 +281,7 @@ export component ServiceView {
                     service: AppData.table-rows[current-row][1].text,
                     email: AppData.table-rows[current-row][2].text,
                     username: AppData.table-rows[current-row][3].text,
-                    password: AppData.table-rows[current-row][4].text,
+                    password: "", // Not stored in memory
                     notes: AppData.table-rows[current-row][5].text,
                 };
             }

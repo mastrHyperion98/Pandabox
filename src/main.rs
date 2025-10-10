@@ -2,13 +2,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use crate::encrypt::cryptography::CryptEngine;
-use slint::{Model, ModelRc, SharedString, StandardListViewItem, VecModel, Weak};
+use slint::{Model, ModelRc, SharedString, StandardListViewItem, VecModel, Weak, Timer, TimerMode};
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use zeroize::Zeroize;
 use crate::database::manager::DatabaseManager;
 use crate::session::session::Session;
+use arboard::Clipboard;
 
 mod database;
 mod encrypt;
@@ -144,7 +145,7 @@ fn update_entry(session: &Session, index: usize, record_id: i32, service: &Share
         StandardListViewItem::from(service.as_str()),
         StandardListViewItem::from(email.as_str()),
         StandardListViewItem::from(username.as_str()),
-        StandardListViewItem::from("••••••••"), // Hide password
+        StandardListViewItem::from("••••••••"), // Hide password in display
         StandardListViewItem::from(notes.as_str()),
     ]));
 
@@ -170,7 +171,7 @@ fn insert_entry(session: &Session, service: &SharedString, email: &SharedString,
                     StandardListViewItem::from(record.service.as_str()),
                     StandardListViewItem::from(record.email.as_str()),
                     StandardListViewItem::from(record.username.as_str()),
-                    StandardListViewItem::from("••••••••"), // Hide password
+                    StandardListViewItem::from("••••••••"), // Hide password in display
                     StandardListViewItem::from(record.notes.as_str()),
                 ];
 
@@ -331,9 +332,121 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
         }
     });
 
+    let ui_weak_for_clipboard = ui_weak.clone();
+    let session_state_for_clipboard = Arc::clone(&session_state);
+    ui.on_copy_to_clipboard(move |value: SharedString, field_name: SharedString| {
+        let session_guard = session_state_for_clipboard.lock().unwrap();
+        if let Some(session) = &*session_guard {
+            copy_to_clipboard_handler(value, field_name, ui_weak_for_clipboard.clone(), session);
+        } else {
+            println!("No active session found for clipboard operation");
+        }
+    });
+
     ui.run().unwrap();
 
     Ok(())
+}
+
+fn copy_to_clipboard_handler(value: SharedString, field_name: SharedString, ui_weak: Weak<EntryWindow>, session: &Session) {
+    // Fetch and decrypt password if we're copying a password field
+    let value_to_copy = if field_name.as_str() == "Password" {
+        // Parse the record ID
+        let record_id = match value.as_str().parse::<i32>() {
+            Ok(id) => id,
+            Err(e) => {
+                eprintln!("Failed to parse record ID: {}", e);
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.global::<AppData>().set_toast_message(SharedString::from("Invalid record ID"));
+                    ui.global::<AppData>().set_show_toast(true);
+                    
+                    let ui_weak_timer = ui.as_weak();
+                    slint::invoke_from_event_loop(move || {
+                        let timer = Timer::default();
+                        timer.start(TimerMode::SingleShot, std::time::Duration::from_secs(2), move || {
+                            if let Some(ui) = ui_weak_timer.upgrade() {
+                                ui.global::<AppData>().set_show_toast(false);
+                            }
+                        });
+                        std::mem::forget(timer);
+                    }).ok();
+                }
+                return;
+            }
+        };
+
+        // Fetch from database and decrypt
+        match session.get_decrypted_password(record_id) {
+            Ok(decrypted) => decrypted,
+            Err(e) => {
+                eprintln!("Failed to fetch/decrypt password: {}", e);
+                // Show error toast
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.global::<AppData>().set_toast_message(SharedString::from("Failed to decrypt password"));
+                    ui.global::<AppData>().set_show_toast(true);
+                    
+                    let ui_weak_timer = ui.as_weak();
+                    slint::invoke_from_event_loop(move || {
+                        let timer = Timer::default();
+                        timer.start(TimerMode::SingleShot, std::time::Duration::from_secs(2), move || {
+                            if let Some(ui) = ui_weak_timer.upgrade() {
+                                ui.global::<AppData>().set_show_toast(false);
+                            }
+                        });
+                        std::mem::forget(timer);
+                    }).ok();
+                }
+                return;
+            }
+        }
+    } else {
+        value.to_string()
+    };
+
+    // Copy to clipboard
+    match Clipboard::new() {
+        Ok(mut clipboard) => {
+            match clipboard.set_text(&value_to_copy) {
+                Ok(_) => {
+                    println!("Copied {} to clipboard", field_name);
+                    
+                    // Keep clipboard alive for a bit to ensure clipboard managers can read it
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        drop(clipboard);
+                    });
+                    
+                    // Show toast notification
+                    if let Some(ui) = ui_weak.upgrade() {
+                        let message = format!("{} copied!", field_name);
+                        
+                        // Set the toast message and show it
+                        ui.global::<AppData>().set_toast_message(SharedString::from(message));
+                        ui.global::<AppData>().set_show_toast(true);
+                        
+                        // Create a timer to hide the toast after 2 seconds
+                        let ui_weak_timer = ui.as_weak();
+                        slint::invoke_from_event_loop(move || {
+                            let timer = Timer::default();
+                            timer.start(TimerMode::SingleShot, std::time::Duration::from_secs(2), move || {
+                                if let Some(ui) = ui_weak_timer.upgrade() {
+                                    ui.global::<AppData>().set_show_toast(false);
+                                }
+                            });
+                            // Keep timer alive by leaking it (it will auto-cleanup after firing)
+                            std::mem::forget(timer);
+                        }).ok();
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to copy to clipboard: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to initialize clipboard: {}", e);
+        }
+    }
 }
 
 fn refresh_table_data(ui_weak: &Weak<EntryWindow>, session: &Session) {
@@ -355,9 +468,8 @@ fn refresh_table_data(ui_weak: &Weak<EntryWindow>, session: &Session) {
                         StandardListViewItem::from(record.service.as_str()),
                         StandardListViewItem::from(record.email.as_str()),
                         StandardListViewItem::from(record.username.as_str()),
-                        StandardListViewItem::from("••••••••"), // Hide password
+                        StandardListViewItem::from("••••••••"), // Hide password in display
                         StandardListViewItem::from(record.notes.as_str()),
-                        StandardListViewItem::from(""), // Placeholder for last update
                     ];
                     
                     let row_model = Rc::new(VecModel::from(row));
