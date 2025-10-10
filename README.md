@@ -53,6 +53,36 @@ Pandabox employs a multi-layered security approach to protect your sensitive dat
 
 ### Installation
 
+#### Option 1: Install from Flatpak Bundle (Linux - Recommended)
+
+1. Download the latest `pandabox.flatpak` bundle from the [releases page](https://github.com/mastrHyperion98/Pandabox/releases)
+
+2. Install Flatpak if you haven't already:
+   ```bash
+   # Debian/Ubuntu
+   sudo apt install flatpak
+   
+   # Fedora
+   sudo dnf install flatpak
+   
+   # Arch Linux
+   sudo pacman -S flatpak
+   ```
+
+3. Install the Pandabox Flatpak bundle:
+   ```bash
+   flatpak install --user pandabox.flatpak
+   ```
+
+4. Run Pandabox:
+   ```bash
+   flatpak run com.github.mastrHyperion98.Pandabox
+   ```
+   
+   Or launch it from your application menu.
+
+#### Option 2: Build from Source
+
 1. Clone the repository:
    ```bash
    git clone https://github.com/mastrHyperion98/Pandabox
