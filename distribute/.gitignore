@@ -1,0 +1,16 @@
+# Build artifacts
+staging/
+output/
+*.msi
+*.wixobj
+*.wixpdb
+
+# Auto-generated files
+dependencies.wxs
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
