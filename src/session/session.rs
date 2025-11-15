@@ -4,6 +4,7 @@ use diesel::prelude::*;
 use slint::SharedString;
 use crate::database::manager::DatabaseManager;
 use crate::encrypt::cryptography::CryptEngine;
+use log::error;
 
 pub struct Session {
     // Whether the session is active or not
@@ -39,7 +40,7 @@ impl Session {
         let encrypted_password = match self.crypto_engine.encrypt_record(password.as_str().as_ref(), self.get_key().clone()) {
             Ok(encrypted) => base64::engine::general_purpose::STANDARD.encode(encrypted),
             Err(e) => {
-                eprintln!("Failed to encrypt password: {}", e);
+                error!("Failed to encrypt password: {}", e);
                 return Err(diesel::result::Error::DeserializationError(
                     Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
@@ -63,7 +64,7 @@ impl Session {
         let encrypted_password = match self.crypto_engine.encrypt_record(password.as_str().as_ref(), self.get_key().clone()) {
             Ok(encrypted) => base64::engine::general_purpose::STANDARD.encode(encrypted),
             Err(e) => {
-                eprintln!("Failed to encrypt password: {}", e);
+                error!("Failed to encrypt password: {}", e);
                 return false;
             }
         };
@@ -78,7 +79,7 @@ impl Session {
         ) {
             Ok(_) => true,
             Err(e) => {
-                eprintln!("Failed to update entry: {}", e);
+                error!("Failed to update entry: {}", e);
                 false
             }
         }
@@ -91,7 +92,7 @@ impl Session {
         ) {
             Ok(_) => true,
             Err(e) => {
-                eprintln!("Failed to update entry: {}", e);
+                error!("Failed to delete entry: {}", e);
                 false
             }
         }

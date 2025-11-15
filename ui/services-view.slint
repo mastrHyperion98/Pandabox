@@ -258,7 +258,6 @@ export component ServiceView {
                 clicked => {
                     root.form-mode = FormMode.Edit;
                     root.show-state = View.Form;
-                    root.current-row = -1;
                 }
             }
 
@@ -456,10 +455,13 @@ export component ServiceView {
             save-pressed(data) => {
                 root.save_service(data, root.form-mode-text, root.current-row);
                 root.show-state = View.Table;
+                root.current-row = -1;
+                root.current-service-data = {};
             }
 
             cancel-pressed() => {
                 root.show-state = View.Table;
+                root.current-row = -1;
                 root.current-service-data = {};
             }
 
