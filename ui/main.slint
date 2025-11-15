@@ -35,6 +35,7 @@ export component EntryWindow inherits Window {
     in-out property <int> shake-trigger: 0;
     property <bool> show-file-menu: false;
     property <bool> show-help-menu: false;
+    in-out property <string> app-version: "0.1.0";
 
     if current_page == Page.CreateDb: AuthView {
         button_text: "Create Database";
@@ -109,6 +110,7 @@ export component EntryWindow inherits Window {
             
             // Main content
             service-view := ServiceView{
+                app-version: root.app-version;
                 generate_password() => { root.generate_password() }
                 save_service(data, mode, row) => { root.save_service(data, mode, row) }
                 delete_entry(id) => { root.delete_entry(id) }
