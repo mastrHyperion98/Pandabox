@@ -437,6 +437,9 @@ fn run(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Box<dyn Error
 
 fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Box<dyn Error>> {
     let ui = EntryWindow::new()?;
+    
+    // Set version from Cargo.toml
+    ui.set_app_version(SharedString::from(env!("CARGO_PKG_VERSION")));
 
     if db_exist {
         ui.set_current_page(Page::Authenticate);

@@ -33,6 +33,7 @@ export component ServiceView {
     in-out property <ServiceData> current-service-data;
     property <int> current-row: -1;
     in-out property <bool> show-about: false;
+    in-out property <string> app-version: "0.1.0";
 
     // Helper property to display form mode text
     property <string> form-mode-text: root.form-mode == FormMode.Add ? "Add" : "Edit";
@@ -166,7 +167,7 @@ export component ServiceView {
                         }
                         
                         Text {
-                            text: "Version: 0.1.0";
+                            text: "Version: " + root.app-version;
                             font-size: 14px;
                             wrap: word-wrap;
                         }
