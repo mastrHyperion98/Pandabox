@@ -15,6 +15,7 @@ use std::io::BufReader;
 use csv::{Writer, Reader};
 use serde::{Serialize, Deserialize};
 use rfd::FileDialog;
+use log::{error, warn, info};
 
 mod database;
 mod encrypt;
@@ -52,13 +53,13 @@ fn on_authenticate(
                     status = true;
                 }
                 Err(_) => {
-                    println!("Failed to decrypt master key");
+                    error!("Failed to decrypt master key");
                 }
             };
             (status, session)
         }
         Err(e) => {
-            eprintln!("Failed to get master record: {}", e);
+            error!("Failed to get master record: {}", e);
             (false, None)
         }
     }
@@ -80,13 +81,11 @@ where
     move |input: T| {
         // Call the supplied function
         if !fn_to_call(input.clone(), manager.clone()) {
-            println!("{:?} failed!", stringify!(fn_to_call));
             return;
         }
 
         // Upgrade the weak UI pointer and change page
         if let Some(ui) = ui_weak.upgrade() {
-            println!("{:?} succeeded!", stringify!(fn_to_call));
             ui.set_current_page(success_page);
         }
     }
@@ -100,10 +99,8 @@ fn create_db(manager: Rc<DatabaseManager>, data: SharedString) -> bool {
     let mut master_key = CryptEngine::generate_master_key();
     let (mut nonce, mut ciphertext) = engine.encrypt_master_key(master_key.as_ref()).unwrap();
 
-    println!("Creating DB");
     match manager.create_master_record(salt.as_ref(), ciphertext.as_ref(), nonce.as_ref()) {
         Ok(_) => {
-            println!("Created Master Record");
             // Securely wipe sensitive data from memory now that it's committed to database
             salt.zeroize();
             master_key.zeroize();
@@ -112,7 +109,7 @@ fn create_db(manager: Rc<DatabaseManager>, data: SharedString) -> bool {
             true
         }
         Err(e) => {
-            eprintln!("Failed to create Master Record: {}", e);
+            error!("Failed to create Master Record: {}", e);
             // Securely wipe sensitive data from memory
             salt.zeroize();
             master_key.zeroize();
@@ -134,21 +131,24 @@ fn handle_save_service(
     ui_weak: slint::Weak<EntryWindow>
 ) {
     let index = current_index as usize;
-    if service.is_empty() || email.is_empty() || username.is_empty() || password.is_empty(){
+    
+    // Basic validation for required fields (except password in edit mode)
+    if service.is_empty() || email.is_empty() || username.is_empty() {
         return;
     }
 
     if let Some(ui) = ui_weak.upgrade() {
-        println!("Form mode: {}", form_mode);
-        println!("Current index: {}", current_index);
         if form_mode.as_str() == "Add" {
+            // For Add mode, password is required
+            if password.is_empty() {
+                return;
+            }
             insert_entry(session, &service, &email, username, password, notes, ui);
-        }else{
+        } else {
+            // For Edit mode, password can be empty (keep existing password)
             let record_id = record_id_str.as_str().parse::<i32>().unwrap_or(0);
             update_entry(session, index, record_id, &service, &email, username, password, notes, ui);
         }
-
-        println!("Service saved: {} - {}", service, email);
     }
 }
 
@@ -163,7 +163,20 @@ fn update_entry(session: &Session, index: usize, record_id: i32, service: &Share
         StandardListViewItem::from(notes.as_str()),
     ]));
 
-    if session.update_entry(record_id, service, email, &username, &password, &notes) {
+    // If password is empty, retrieve the existing password from the database
+    let password_to_use = if password.is_empty() {
+        match session.get_decrypted_password(record_id) {
+            Ok(existing_password) => SharedString::from(existing_password.as_str()),
+            Err(e) => {
+                error!("Failed to retrieve existing password: {}", e);
+                return;
+            }
+        }
+    } else {
+        password
+    };
+
+    if session.update_entry(record_id, service, email, &username, &password_to_use, &notes) {
         table_model_handle.set_row_data(index, row_data);
     }
 }
@@ -193,12 +206,11 @@ fn insert_entry(session: &Session, service: &SharedString, email: &SharedString,
                 vec_model.push(new_row);
             }
             Err(e) => {
-                eprintln!("Failed to insert entry: {}", e);
+                error!("Failed to insert entry: {}", e);
             }
         }
     } else {
-        // This will print an error to your console if the type isn't what we expect.
-        println!("Error: Could not access the table model as a VecModel.");
+        error!("Could not access the table model as a VecModel");
     }
 }
 
@@ -208,15 +220,14 @@ fn delete_entry(index: SharedString, session: &Session, ui_weak: Weak<EntryWindo
         // Parse the index safely
         match index.as_str().parse::<i32>() {
             Ok(index_to_remove) => {
-                println!("Removing entry at index: {}", index_to_remove);
                 if session.delete_entry(index_to_remove) {
                     refresh_table_data(&ui_weak, session);
                 } else {
-                    eprintln!("Failed to delete entry from database");
+                    error!("Failed to delete entry from database");
                 }
             }
             Err(e) => {
-                eprintln!("Failed to parse index '{}': {}", index, e);
+                error!("Failed to parse index '{}': {}", index, e);
             }
         }
     }
@@ -239,7 +250,7 @@ fn init_manager() -> (bool, Option<Rc<DatabaseManager>>) {
     match manager.check_master_table_exists() {
         Ok(exists) => (exists, Some(manager)),
         Err(e) => {
-            eprintln!("Failed to check master table: {}", e);
+            error!("Failed to check master table: {}", e);
             // This might happen if the database file is corrupt or migrations haven't run.
             // For now, we'll treat it as if the DB doesn't exist.
             (false, Some(manager))
@@ -276,17 +287,16 @@ fn export_csv_handler(session: &Session, ui_weak: Weak<EntryWindow>) {
                                 };
                                 
                                 if let Err(e) = wtr.serialize(csv_record) {
-                                    eprintln!("Failed to write record: {}", e);
+                                    error!("Failed to write CSV record: {}", e);
                                 }
                             }
                             Err(e) => {
-                                eprintln!("Failed to decrypt password for {}: {}", record.service, e);
+                                error!("Failed to decrypt password for {}: {}", record.service, e);
                             }
                         }
                     }
                     
                     wtr.flush().ok();
-                    println!("Exported to: {}", path.display());
                     
                     // Show success toast
                     if let Some(ui) = ui_weak.upgrade() {
@@ -305,16 +315,14 @@ fn export_csv_handler(session: &Session, ui_weak: Weak<EntryWindow>) {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to create CSV file: {}", e);
+                    error!("Failed to create CSV file: {}", e);
                 }
             }
         }
         Err(e) => {
-            eprintln!("Failed to get records: {}", e);
+            error!("Failed to get records for export: {}", e);
         }
     }
-    } else {
-        println!("Export cancelled by user");
     }
 }
 
@@ -343,14 +351,12 @@ fn import_csv_handler(session: &Session, ui_weak: Weak<EntryWindow>) {
                             &SharedString::from(csv_record.notes),
                         ) {
                             Ok(_) => count += 1,
-                            Err(e) => eprintln!("Failed to import record: {}", e),
+                            Err(e) => error!("Failed to import record: {}", e),
                         }
                     }
-                    Err(e) => eprintln!("Failed to parse CSV record: {}", e),
+                    Err(e) => error!("Failed to parse CSV record: {}", e),
                 }
             }
-            
-            println!("Imported {} records", count);
             
             // Refresh table
             refresh_table_data(&ui_weak, session);
@@ -371,7 +377,7 @@ fn import_csv_handler(session: &Session, ui_weak: Weak<EntryWindow>) {
             }
         }
         Err(e) => {
-            eprintln!("Failed to open CSV file: {}", e);
+            error!("Failed to open CSV file: {}", e);
             if let Some(ui) = ui_weak.upgrade() {
                 ui.global::<AppData>().set_toast_message(SharedString::from("Failed to open CSV file"));
                 ui.global::<AppData>().set_show_toast(true);
@@ -387,8 +393,6 @@ fn import_csv_handler(session: &Session, ui_weak: Weak<EntryWindow>) {
             }
         }
     }
-    } else {
-        println!("Import cancelled by user");
     }
 }
 
@@ -407,15 +411,21 @@ fn save_all_handler(ui_weak: Weak<EntryWindow>) {
         });
         std::mem::forget(timer);
     }
-    println!("Database saved");
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // Initialize logger
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+    
+    info!("Starting Pandabox application");
+    
     let (db_exist, manager) = init_manager();
 
     match manager {
         Some(manager) => run(db_exist, manager)?,
-        None => eprintln!("Failed to initialize database manager"),
+        None => error!("Failed to initialize database manager"),
     }
     Ok(())
 }
@@ -466,7 +476,6 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                 }
             }
         } else {
-            println!("Failed to authenticate");
             // Trigger shake animation
             if let Some(ui) = ui_weak.upgrade() {
                 ui.set_auth_error(true);
@@ -524,8 +533,6 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                 data.notes, 
                 ui_weak_for_save.clone()
             );
-        } else {
-            println!("No active session found");
         }
     });
 
@@ -540,8 +547,6 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                 session,
                 ui_weak_for_delete.clone()
             );
-        } else {
-            println!("No active session found");
         }
     });
 
@@ -551,8 +556,6 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
         let session_guard = session_state_for_clipboard.lock().unwrap();
         if let Some(session) = &*session_guard {
             copy_to_clipboard_handler(value, field_name, ui_weak_for_clipboard.clone(), session);
-        } else {
-            println!("No active session found for clipboard operation");
         }
     });
 
@@ -591,7 +594,7 @@ fn copy_to_clipboard_handler(value: SharedString, field_name: SharedString, ui_w
         let record_id = match value.as_str().parse::<i32>() {
             Ok(id) => id,
             Err(e) => {
-                eprintln!("Failed to parse record ID: {}", e);
+                error!("Failed to parse record ID: {}", e);
                 if let Some(ui) = ui_weak.upgrade() {
                     ui.global::<AppData>().set_toast_message(SharedString::from("Invalid record ID"));
                     ui.global::<AppData>().set_show_toast(true);
@@ -615,7 +618,7 @@ fn copy_to_clipboard_handler(value: SharedString, field_name: SharedString, ui_w
         match session.get_decrypted_password(record_id) {
             Ok(decrypted) => decrypted,
             Err(e) => {
-                eprintln!("Failed to fetch/decrypt password: {}", e);
+                error!("Failed to fetch/decrypt password: {}", e);
                 // Show error toast
                 if let Some(ui) = ui_weak.upgrade() {
                     ui.global::<AppData>().set_toast_message(SharedString::from("Failed to decrypt password"));
@@ -683,13 +686,13 @@ fn copy_to_clipboard_handler(value: SharedString, field_name: SharedString, ui_w
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to copy to clipboard: {}", e);
+                    error!("Failed to copy to clipboard: {}", e);
                     show_error_toast(&ui_weak, "Failed to copy to clipboard");
                 }
             }
         }
         Err(e) => {
-            eprintln!("Failed to initialize clipboard: {}", e);
+            warn!("Failed to initialize clipboard (sandboxed environment): {}", e);
             show_error_toast(&ui_weak, "Clipboard unavailable in sandbox");
         }
     }
@@ -744,7 +747,7 @@ fn refresh_table_data(ui_weak: &Weak<EntryWindow>, session: &Session) {
                 ui.global::<AppData>().set_table_rows(ModelRc::from(table_model));
             }
             Err(e) => {
-                eprintln!("Failed to fetch records: {}", e);
+                error!("Failed to fetch records: {}", e);
             }
         }
     }
