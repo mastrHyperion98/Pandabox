@@ -553,12 +553,21 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
         }
     });
 
+    let clipboard_holder: Arc<Mutex<Option<Clipboard>>> = Arc::new(Mutex::new(None));
+    let clipboard_holder_for_copy = Arc::clone(&clipboard_holder);
+
     let ui_weak_for_clipboard = ui_weak.clone();
     let session_state_for_clipboard = Arc::clone(&session_state);
     ui.on_copy_to_clipboard(move |value: SharedString, field_name: SharedString| {
         let session_guard = session_state_for_clipboard.lock().unwrap();
         if let Some(session) = &*session_guard {
-            copy_to_clipboard_handler(value, field_name, ui_weak_for_clipboard.clone(), session);
+            copy_to_clipboard_handler(
+                value,
+                field_name,
+                ui_weak_for_clipboard.clone(),
+                session,
+                Arc::clone(&clipboard_holder_for_copy),
+            );
         }
     });
 
@@ -590,7 +599,7 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
     Ok(())
 }
 
-fn copy_to_clipboard_handler(value: SharedString, field_name: SharedString, ui_weak: Weak<EntryWindow>, session: &Session) {
+fn copy_to_clipboard_handler(value: SharedString, field_name: SharedString, ui_weak: Weak<EntryWindow>, session: &Session, clipboard_holder: Arc<Mutex<Option<Clipboard>>>) {
     // Fetch and decrypt password if we're copying a password field
     let value_to_copy = if field_name.as_str() == "Password" {
         // Parse the record ID
@@ -645,26 +654,17 @@ fn copy_to_clipboard_handler(value: SharedString, field_name: SharedString, ui_w
         value.to_string()
     };
 
-    // Copy to clipboard with retry logic for Flatpak environments
-    let mut clipboard_result = Clipboard::new();
-    
-    // If first attempt fails, try again after a short delay (helps with X11 timeout issues)
-    if clipboard_result.is_err() {
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        clipboard_result = Clipboard::new();
-    }
-    
-    match clipboard_result {
+    // On Wayland (wayland-data-control feature): arboard uses the native wl-data-control protocol
+    // and manages the clipboard lifetime internally via its own background thread.
+    // On X11: the process must keep owning the selection until another owner takes it.
+    // In both cases we store the Clipboard handle in clipboard_holder so it stays alive
+    // until the next copy replaces it, preventing premature ownership loss.
+    match Clipboard::new() {
         Ok(mut clipboard) => {
             match clipboard.set_text(&value_to_copy) {
                 Ok(_) => {
-                    println!("Copied {} to clipboard", field_name);
-                    
-                    // Keep clipboard alive for a bit to ensure clipboard managers can read it
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(100));
-                        drop(clipboard);
-                    });
+                    info!("Copied {} to clipboard", field_name);
+                    *clipboard_holder.lock().unwrap() = Some(clipboard);
                     
                     // Show toast notification
                     if let Some(ui) = ui_weak.upgrade() {
