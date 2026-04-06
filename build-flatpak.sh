@@ -18,23 +18,28 @@ flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//
 # Generate cargo sources for offline build
 echo "🦀 Generating Cargo sources..."
 
-# Check if aiohttp is installed
-if ! python3 -c "import aiohttp" 2>/dev/null; then
-    echo "📦 Installing required Python dependencies..."
-    pip3 install --user aiohttp toml || {
-        echo "❌ Failed to install Python dependencies"
-        echo "Please install manually: pip3 install aiohttp toml"
-        exit 1
-    }
-fi
+GENERATOR=/tmp/flatpak-cargo-generator.py
 
 if ! command -v flatpak-cargo-generator.py &> /dev/null; then
     echo "📥 Downloading flatpak-cargo-generator..."
-    wget https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py -O /tmp/flatpak-cargo-generator.py
-    chmod +x /tmp/flatpak-cargo-generator.py
-    python3 /tmp/flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json
-else
+    wget https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py -O "$GENERATOR"
+    chmod +x "$GENERATOR"
+fi
+
+# Ensure Python deps (aiohttp, toml) are available for the generator.
+# Use a throwaway venv if they are not already importable (avoids sudo / PEP 668).
+PYTHON=python3
+if ! python3 -c "import aiohttp, tomlkit" 2>/dev/null; then
+    echo "📦 Setting up Python deps in temporary venv..."
+    python3 -m venv /tmp/pandabox-build-venv
+    /tmp/pandabox-build-venv/bin/pip install --quiet aiohttp tomlkit
+    PYTHON=/tmp/pandabox-build-venv/bin/python
+fi
+
+if command -v flatpak-cargo-generator.py &> /dev/null; then
     flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json
+else
+    $PYTHON "$GENERATOR" Cargo.lock -o cargo-sources.json
 fi
 
 # Build the Flatpak

@@ -35,14 +35,11 @@
   <developer_name>mastrHyperion98</developer_name>
   
   <releases>
-    <release version="0.1.0" date="2025-01-10">
+    <release version="0.1.1" date="2026-04-06">
       <description>
-        <p>Initial release</p>
+        <p>Fix wayland clipboarding</p>
         <ul>
-          <li>Secure password storage with ChaCha20-Poly1305 encryption</li>
-          <li>Argon2id master password hashing</li>
-          <li>Modern UI with Slint</li>
-          <li>CSV import/export functionality</li>
+          <li>Proper Wayland clipboard support</li>
         </ul>
       </description>
     </release>
