@@ -168,10 +168,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Icons provided by Anastassiya Motokhova at [flaticon.com](https://www.flaticon.com/authors/anastassiya-motokhova)
 - Built with ❤️ using Rust
 
-## Security Disclosures
-
-If you discover any security vulnerabilities, please report them by opening an issue or contacting us directly at [your-email@example.com].
-
----
-
 🔒 **Remember**: Always keep your master password secure and never share it with anyone. The security of your passwords depends on it!
