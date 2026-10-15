@@ -127,7 +127,7 @@ jobs:
               "Use request_changes otherwise. comments may be empty and must be at most 8. "
               "Only comment on lines the diff actually touches. "
               "summary is the review body. approve is posted as a comment, never as a GitHub approval. "
-              "request_changes is posted as a request-changes review."
+              "Both verdicts are posted as a comment. This job never approves and never requests changes."
           )
           payload = {
               "model": "grok-build-0.1",
@@ -182,13 +182,14 @@ jobs:
 
           verdict = str(review.get("verdict", "")).strip().lower().replace("-", "_").replace(" ", "_")
           summary = str(review.get("summary", "")).strip() or "Grok returned no written review."
-          # Never APPROVE from model output. The diff is attacker-controlled.
+          # Comment only. A later run cannot clear a request-changes review, so that event would stay blocking.
           if verdict in ("approve", "approved"):
-              event = "COMMENT"
+              summary = "No blocking issues found.\n\n" + summary
           elif verdict in ("request_changes", "changes_requested", "requestchanges"):
-              event = "REQUEST_CHANGES"
+              summary = "Would request changes.\n\n" + summary
           else:
               comment_and_stop("Grok review (no usable verdict):\n\n" + summary, 1)
+          event = "COMMENT"
 
           touched = {}
           path = None
