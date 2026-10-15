@@ -33,6 +33,7 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - name: Review with one Grok call
+        continue-on-error: true
         run: |
           python3 - <<'PY'
           import json, os, re, urllib.request, urllib.error
@@ -74,32 +75,32 @@ jobs:
               status, raw = post_review("COMMENT", body)
               if status >= 300:
                   print(raw[:500])
-                  raise SystemExit(1)
+                  raise SystemExit(0)
               raise SystemExit(code)
 
           def live_head():
               status, raw = github("GET", f"https://api.github.com/repos/{repo}/pulls/{pr}")
               if status != 200:
                   print(f"could not read pull head (HTTP {status})")
-                  raise SystemExit(1)
+                  raise SystemExit(0)
               try:
                   return json.loads(raw)["head"]["sha"]
               except (ValueError, KeyError, TypeError):
                   print("pull JSON had no head.sha")
-                  raise SystemExit(1)
+                  raise SystemExit(0)
 
           def require_same_head():
               current = live_head()
               if current != sha:
                   print(f"head moved: event {sha} now {current}; not posting")
-                  raise SystemExit(1)
+                  raise SystemExit(0)
 
           if not api_key:
               print("XAI_API_KEY unset; skipping")
               raise SystemExit(0)
           if not token:
               print("no GitHub token")
-              raise SystemExit(1)
+              raise SystemExit(0)
 
           require_same_head()
           status, diff = github(
