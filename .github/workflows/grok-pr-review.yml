@@ -120,15 +120,12 @@ jobs:
               "Focus on cryptographic misuse, secret lifetime and zeroize, clipboard leaks, "
               "SQL injection, authentication bypass, and error handling. "
               "Respond with ONLY a JSON object, no markdown fences: "
-              '{"verdict":"approve"|"request_changes",'
-              '"summary":"<the review, 2 to 8 sentences, specific and actionable>",'
+              '{"summary":"<the review, 2 to 8 sentences, specific and actionable>",'
               '"comments":[{"path":"<repo-relative path>","line":<1-based line in the new file>,'
               '"body":"<one finding>"}]}. '
-              "Use approve only when you find no correctness, safety, or error-handling bugs. "
-              "Use request_changes otherwise. comments may be empty and must be at most 8. "
+              "comments may be empty and must be at most 8. "
               "Only comment on lines the diff actually touches. "
-              "summary is the review body. approve is posted as a comment, never as a GitHub approval. "
-              "Both verdicts are posted as a comment. This job never approves and never requests changes."
+              "summary is posted as a comment. Do not approve. Do not request changes."
           )
           payload = {
               "model": "grok-build-0.1",
@@ -181,15 +178,7 @@ jobs:
           except (ValueError, AttributeError):
               comment_and_stop("Grok review (no verdict; response was not JSON):\n\n" + text[:8000], 1)
 
-          verdict = str(review.get("verdict", "")).strip().lower().replace("-", "_").replace(" ", "_")
           summary = str(review.get("summary", "")).strip() or "Grok returned no written review."
-          # Comment only. A later run cannot clear a request-changes review, so that event would stay blocking.
-          if verdict in ("approve", "approved"):
-              summary = "No blocking issues found.\n\n" + summary
-          elif verdict in ("request_changes", "changes_requested", "requestchanges"):
-              summary = "Would request changes.\n\n" + summary
-          else:
-              comment_and_stop("Grok review (no usable verdict):\n\n" + summary, 1)
           event = "COMMENT"
 
           touched = {}
