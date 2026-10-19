@@ -52,12 +52,17 @@ export component ServiceView {
     if AppData.show-toast: Rectangle {
         x: (parent.width - self.width) / 2;
         y: parent.height - 100px;
-        background: #2d2d2d;
+        width: toast-content.preferred-width + 40px;
+        height: toast-content.preferred-height + 24px;
+        z: 10;
+        background: #333333d9;
+        border-width: 1px;
+        border-color: #ffffff2e;
         border-radius: 8px;
         drop-shadow-blur: 10px;
         drop-shadow-color: #00000080;
 
-        HorizontalLayout {
+        toast-content := HorizontalLayout {
             padding-left: 20px;
             padding-right: 20px;
             padding-top: 12px;
