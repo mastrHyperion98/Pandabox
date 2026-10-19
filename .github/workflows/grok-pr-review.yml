@@ -159,7 +159,9 @@ jobs:
                   return err.code, parsed
 
           status, data = ask(payload)
-          if status == 400 and "reasoning_effort" in json.dumps(data):
+          # xAI reports the bad parameter in camelCase ("reasoningEffort"), so
+          # match case-insensitively and drop it for models that reject it.
+          if status == 400 and re.search(r"reasoning[_ ]?effort", json.dumps(data), re.I):
               payload.pop("reasoning_effort", None)
               status, data = ask(payload)
           if status != 200:
