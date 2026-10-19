@@ -261,9 +261,22 @@ fn sort_table_handler(column: i32, ascending: bool, ui_weak: &Weak<EntryWindow>)
         return;
     }
 
+    // Detect whether every value in the clicked column is numeric, so the
+    // ID column sorts numerically (1, 2, 10, 11) instead of
+    // lexicographically (1, 10, 11, ..., 2).
+    let all_numeric = entries
+        .iter()
+        .all(|(key, _)| key.parse::<i64>().is_ok());
+
     // Stable sort by the precomputed key (one allocation per row, not per comparison)
     entries.sort_by(|a, b| {
-        let ord = a.0.cmp(&b.0);
+        let ord = if all_numeric {
+            let va = a.0.parse::<i64>().unwrap_or(0);
+            let vb = b.0.parse::<i64>().unwrap_or(0);
+            va.cmp(&vb)
+        } else {
+            a.0.cmp(&b.0)
+        };
         if ascending {
             ord
         } else {
