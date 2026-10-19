@@ -8,7 +8,11 @@
     <option name="emulateTerminal" value="false" />
     <option name="withSudo" value="false" />
     <option name="backtrace" value="SHORT" />
-    <envs />
+    <envs>
+      <env name="QT_AUTO_SCREEN_SCALE_FACTOR" value="0" />
+      <env name="QT_ENABLE_HIGHDPI_SCALING" value="0" />
+      <env name="QT_SCALE_FACTOR" value="1" />
+    </envs>
     <option name="isRedirectInput" value="false" />
     <option name="redirectInputPath" value="" />
     <method v="2">
