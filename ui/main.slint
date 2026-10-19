@@ -22,6 +22,7 @@ export component EntryWindow inherits Window {
     callback save_all();
     callback import_csv();
     callback export_csv();
+    callback sort_table(int, bool);
 
     title: "Pandabox";
     min-width: 1280px;
@@ -118,6 +119,7 @@ export component EntryWindow inherits Window {
                 save_all() => { root.save_all() }
                 import_csv() => { root.import_csv() }
                 export_csv() => { root.export_csv() }
+                sort_table(column, ascending) => { root.sort_table(column, ascending) }
             }
         }
         

@@ -12,6 +12,7 @@ Pandabox is a secure, open-source password manager built with Rust, offering rob
 - 🔑 Secure password generation
 - 📝 Secure notes storage
 - 🔍 Easy credential management
+- 📊 Sortable table - click any column header to sort ascending/descending
 
 ## Security Architecture
 

@@ -214,6 +214,63 @@ fn insert_entry(session: &Session, service: &SharedString, email: &SharedString,
     }
 }
 
+fn sort_table_handler(column: i32, ascending: bool, ui_weak: &Weak<EntryWindow>) {
+    let ui = match ui_weak.upgrade() {
+        Some(ui) => ui,
+        None => return,
+    };
+
+    let table_model_handle = ui.global::<AppData>().get_table_rows();
+    let model = match table_model_handle
+        .as_any()
+        .downcast_ref::<VecModel<ModelRc<StandardListViewItem>>>()
+    {
+        Some(model) => model,
+        None => {
+            error!("Could not access the table model as a VecModel");
+            return;
+        }
+    };
+
+    let row_count = model.row_count();
+    if row_count == 0 {
+        return;
+    }
+
+    // Extract every cell of every row so we can re-order the rows
+    let mut rows: Vec<Vec<StandardListViewItem>> = (0..row_count)
+        .filter_map(|i| model.row_data(i))
+        .map(|row| {
+            let cell_count = row.row_count();
+            (0..cell_count).filter_map(|j| row.row_data(j)).collect()
+        })
+        .collect();
+
+    let column = column as usize;
+    if rows.is_empty() || column >= rows[0].len() {
+        return;
+    }
+
+    // Stable, case-insensitive sort by the clicked column
+    rows.sort_by(|a, b| {
+        let key_a = a[column].text.as_str().to_lowercase();
+        let key_b = b[column].text.as_str().to_lowercase();
+        if ascending {
+            key_a.cmp(&key_b)
+        } else {
+            key_b.cmp(&key_a)
+        }
+    });
+
+    let new_model = Rc::new(VecModel::default());
+    for row in rows {
+        new_model.push(ModelRc::new(VecModel::from(row)));
+    }
+
+    ui.global::<AppData>().set_table_rows(ModelRc::from(new_model));
+    info!("Sorted table by column {} ({})", column, if ascending { "ascending" } else { "descending" });
+}
+
 fn delete_entry(index: SharedString, session: &Session, ui_weak: Weak<EntryWindow>) {
     // Get the table model
     if let Some(_ui) = ui_weak.upgrade() {
@@ -592,6 +649,11 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
     let ui_weak_for_save = ui_weak.clone();
     ui.on_save_all(move || {
         save_all_handler(ui_weak_for_save.clone());
+    });
+
+    let ui_weak_for_sort = ui_weak.clone();
+    ui.on_sort_table(move |column: i32, ascending: bool| {
+        sort_table_handler(column, ascending, &ui_weak_for_sort);
     });
 
     ui.run().unwrap();
