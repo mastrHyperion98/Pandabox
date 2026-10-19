@@ -35,6 +35,16 @@
   <developer_name>mastrHyperion98</developer_name>
   
   <releases>
+    <release version="0.2.0" date="2026-10-19">
+      <description>
+        <p>Sortable table and menu fixes</p>
+        <ul>
+          <li>Sortable table - click any column header to sort ascending/descending</li>
+          <li>Menu dropdowns no longer stretch to full window height</li>
+          <li>Shared RustRover run configuration and pinned toolchain</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-04-06">
       <description>
         <p>Fix wayland clipboarding</p>

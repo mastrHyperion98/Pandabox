@@ -228,6 +228,7 @@ fn sort_table_handler(column: i32, ascending: bool, ui_weak: &Weak<EntryWindow>)
         Some(model) => model,
         None => {
             error!("Could not access the table model as a VecModel");
+            show_error_toast(ui_weak, "Sort failed: table model unavailable");
             return;
         }
     };
