@@ -1,0 +1,18 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Pandabox" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+    <option name="command" value="run" />
+    <option name="filePath" value="$PROJECT_DIR$" />
+    <option name="contentRoot" value="$PROJECT_DIR$" />
+    <option name="commandLineParams" value="" />
+    <runParametersConfiguration v2="true">
+      <parameters>
+        <commandLineParameters>
+          <value />
+        </commandLineParameters>
+      </parameters>
+    </runParametersConfiguration>
+    <method v="2">
+      <option name="CARGO.BUILD_PROJECT_RUNNER" enabled="true" />
+    </method>
+  </configuration>
+</component>
