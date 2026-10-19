@@ -237,34 +237,48 @@ fn sort_table_handler(column: i32, ascending: bool, ui_weak: &Weak<EntryWindow>)
         return;
     }
 
-    // Extract every cell of every row so we can re-order the rows
-    let mut rows: Vec<Vec<StandardListViewItem>> = (0..row_count)
+    let column = column as usize;
+
+    // Pull each row out of the model as a vector of cells, pairing it with a
+    // single case-insensitive sort key for the clicked column. Rows shorter
+    // than `column` sort under an empty key instead of panicking.
+    let mut entries: Vec<(String, Vec<StandardListViewItem>)> = (0..row_count)
         .filter_map(|i| model.row_data(i))
         .map(|row| {
             let cell_count = row.row_count();
-            (0..cell_count).filter_map(|j| row.row_data(j)).collect()
+            let cells: Vec<StandardListViewItem> =
+                (0..cell_count).filter_map(|j| row.row_data(j)).collect();
+            let key = cells
+                .get(column)
+                .map(|cell| cell.text.as_str().to_lowercase())
+                .unwrap_or_default();
+            (key, cells)
         })
         .collect();
 
-    let column = column as usize;
-    if rows.is_empty() || column >= rows[0].len() {
+    if entries.is_empty() {
         return;
     }
 
-    // Stable, case-insensitive sort by the clicked column
-    rows.sort_by(|a, b| {
-        let key_a = a[column].text.as_str().to_lowercase();
-        let key_b = b[column].text.as_str().to_lowercase();
+    // Stable sort by the precomputed key (one allocation per row, not per comparison)
+    entries.sort_by(|a, b| {
+        let ord = a.0.cmp(&b.0);
         if ascending {
-            key_a.cmp(&key_b)
+            ord
         } else {
-            key_b.cmp(&key_a)
+            ord.reverse()
         }
     });
 
+    // Wipe the derived key material now that the order is fixed, so the
+    // temporary lowercase copies do not linger in memory.
+    for (key, _) in entries.iter_mut() {
+        key.zeroize();
+    }
+
     let new_model = Rc::new(VecModel::default());
-    for row in rows {
-        new_model.push(ModelRc::new(VecModel::from(row)));
+    for (_, cells) in entries {
+        new_model.push(ModelRc::new(VecModel::from(cells)));
     }
 
     ui.global::<AppData>().set_table_rows(ModelRc::from(new_model));
