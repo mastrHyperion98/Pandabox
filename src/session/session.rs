@@ -48,7 +48,7 @@ impl Session {
     /// The 256-bit session (master) key. Owned by this session in a
     /// `Zeroizing` buffer and wiped when the session drops; callers
     /// borrow it read-only (per `CryptEngine::seal`'s zeroization contract).
-    pub fn master_key(&self) -> &[u8] {
+    pub(crate) fn master_key(&self) -> &[u8] {
         &self.key
     }
 
