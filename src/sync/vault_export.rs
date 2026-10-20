@@ -9,6 +9,7 @@ use crate::database::manager::DatabaseManager;
 use base64::Engine;
 use blake2::Digest;
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 pub const VAULT_MAGIC: &str = "PBXS";
 pub const VAULT_VERSION: u8 = 1;
@@ -88,17 +89,17 @@ pub fn canonical_bytes(vault: &VaultExport) -> Vec<u8> {
 /// emails, usernames, notes, master-record encodings). Call this after
 /// the data has been consumed (serialized / sealed).
 pub fn zeroize_vault(vault: &mut VaultExport) {
-    vault.magic.as_mut_bytes().fill(0);
-    vault.exported_at.as_mut_bytes().fill(0);
-    vault.master.encrypted_master_key.as_mut_bytes().fill(0);
-    vault.master.nonce.as_mut_bytes().fill(0);
-    vault.master.salt.as_mut_bytes().fill(0);
+    vault.magic.zeroize();
+    vault.exported_at.zeroize();
+    vault.master.encrypted_master_key.zeroize();
+    vault.master.nonce.zeroize();
+    vault.master.salt.zeroize();
     for r in vault.records.iter_mut() {
-        r.service.as_mut_bytes().fill(0);
-        r.email.as_mut_bytes().fill(0);
-        r.username.as_mut_bytes().fill(0);
-        r.password.as_mut_bytes().fill(0);
-        r.notes.as_mut_bytes().fill(0);
+        r.service.zeroize();
+        r.email.zeroize();
+        r.username.zeroize();
+        r.password.zeroize();
+        r.notes.zeroize();
     }
 }
 
