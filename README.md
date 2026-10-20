@@ -156,6 +156,12 @@ RUST_LOG=debug cargo run
 - `rand` - Cryptographically secure random number generation
 - `chrono` - Date and time handling
 
+## Design Docs
+
+Design packages for planned and in-progress features live under [`docs/`](./docs/). Currently:
+
+- [`docs/cloud-sync/`](./docs/cloud-sync/) — optional folder-based cloud sync (encrypted vault blob)
+
 ## Contributing
 
 Contributions are welcome! Please read our [contributing guidelines](CONTRIBUTING.md) before submitting pull requests.
