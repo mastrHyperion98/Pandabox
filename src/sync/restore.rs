@@ -95,7 +95,9 @@ pub enum SyncComparison {
     Undecodable,
     InSync,
     Diverged {
+        #[allow(dead_code)]
         local: [u8; 32],
+        #[allow(dead_code)]
         remote: [u8; 32],
         /// mtime-based hint for the UI's preselection; the user
         /// confirms in all cases (never auto-resolved).

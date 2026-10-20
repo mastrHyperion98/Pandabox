@@ -75,6 +75,7 @@ impl SyncConfig {
     }
 
     /// Save to the default location (atomic).
+    #[allow(dead_code)] // exercised only by unit tests
     pub fn save(&self) -> io::Result<()> {
         self.save_to(&Self::default_path())
     }
