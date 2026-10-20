@@ -11,6 +11,7 @@
 //! Sealing uses a fresh random nonce on every call.
 
 use crate::encrypt::cryptography::CryptEngine;
+use zeroize::Zeroizing;
 
 /// Crypto failures (auth failure on a wrong key, malformed blob,
 /// wrong key length). Display carries no sensitive detail.
@@ -45,18 +46,19 @@ pub fn decode_vault_blob(blob: &[u8], key: &[u8]) -> Result<Vec<u8>, BlobError> 
 
 /// Open a blob on a machine with no local vault state: the master
 /// password plus the blob's public salt derive a candidate key.
-/// Returns `(canonical vault JSON, decrypted master key, engine)`.
+/// Returns `(canonical vault JSON, derived engine key, engine)`; the
+/// JSON and key are `Zeroizing` buffers, wiped on drop.
 pub fn open_blob_with_password(
     blob: &[u8],
     password: &str,
-) -> Result<(Vec<u8>, Vec<u8>, CryptEngine), BlobError> {
+) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>, CryptEngine), BlobError> {
     if blob.len() < 12 + 16 + SALT_LENGTH {
         return Err(chacha20poly1305::Error);
     }
     let salt = &blob[blob.len() - SALT_LENGTH..];
     let engine = CryptEngine::new(password, salt).map_err(|_| chacha20poly1305::Error)?;
-    let key = engine.derived_key().to_vec();
-    let json = decode_vault_blob(blob, &key)?;
+    let key = Zeroizing::new(engine.derived_key().to_vec());
+    let json = Zeroizing::new(decode_vault_blob(blob, &key)?);
     Ok((json, key, engine))
 }
 

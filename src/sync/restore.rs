@@ -15,11 +15,13 @@ use base64::Engine;
 use std::fs;
 use std::io;
 use std::path::Path;
+use zeroize::Zeroizing;
 
 /// The decrypted master key and Argon2 engine needed to build a
-/// `Session` after a fresh-machine restore.
+/// `Session` after a fresh-machine restore. The key is a `Zeroizing`
+/// buffer; hand it to `Session::new` via `Zeroizing::into_inner`.
 pub struct RestoredVault {
-    pub master_key: Vec<u8>,
+    pub master_key: Zeroizing<Vec<u8>>,
     pub engine: CryptEngine,
 }
 
@@ -76,7 +78,7 @@ pub fn restore_from_folder_with_password(
         .map_err(|_| RestoreError::Decoding)?;
     import_blob(&bytes, &key, manager).map_err(RestoreError::Import)?;
     Ok(RestoredVault {
-        master_key,
+        master_key: Zeroizing::new(master_key),
         engine,
     })
 }
@@ -179,7 +181,7 @@ fn seal_local_vault(session: &Session) -> Result<Vec<u8>, ResolveError> {
     let salt = base64::engine::general_purpose::STANDARD
         .decode(&vault.master.salt)
         .map_err(|e| ResolveError::Io(e.to_string()))?;
-    let json = crate::sync::vault_export::canonical_bytes(&vault);
+    let json = Zeroizing::new(crate::sync::vault_export::canonical_bytes(&vault));
     blob::encode_vault_blob(&json, session.engine_key(), &salt)
         .map_err(|_| ResolveError::Crypto)
 }
@@ -353,7 +355,7 @@ mod tests {
         assert_eq!(got, want);
 
         // The restored engine can be used to build a working session.
-        let session = Session::new(restored.master_key, restored.engine, target.manager.clone());
+        let session = Session::new(restored.master_key.to_vec(), restored.engine, target.manager.clone());
         assert!(matches!(
             compare_with_local(&folder, &session),
             SyncComparison::InSync
