@@ -1,0 +1,190 @@
+import { Button, CheckBox, Palette } from "std-widgets.slint";
+
+export component SyncView inherits Rectangle {
+    // Driven by Rust
+    in-out property <bool> sync-enabled: false;
+    in-out property <string> folder: "";
+    in-out property <string> status-state: "Disabled";
+    in-out property <string> status-detail: "";
+    in-out property <bool> show-conflict: false;
+    in-out property <string> conflict-detail: "";
+
+    // Actions
+    callback choose_folder() -> string;
+    callback set_sync_enabled(bool) -> string;
+    callback sync_now();
+    callback conflict_import();
+    callback conflict_keep();
+    callback conflict_cancel();
+    callback restore_vault(string);
+    callback sync_back();
+
+    in-out property <string> restore-folder: "";
+
+    background: Palette.background;
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 16px;
+        alignment: center;
+
+        VerticalLayout {
+            width: 640px;
+            spacing: 12px;
+
+            Text {
+                text: "Cloud Sync";
+                font-size: 22px;
+                font-weight: 600;
+            }
+            Text {
+                text: "Back up your vault to a folder you choose (for example a Google Drive, Dropbox or Nextcloud sync folder). The file written there (pandabox.pbx) is fully encrypted — the provider only ever sees ciphertext. Disabling sync never deletes the file.";
+                font-size: 13px;
+                color: Palette.alternate-foreground;
+            }
+
+            Rectangle { height: 1px; background: Palette.border; }
+
+            Text { text: "Sync folder"; font-size: 14px; }
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.folder == "" ? "No folder selected" : root.folder;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                }
+                choose-btn := Button {
+                    text: "Choose folder…";
+                    clicked => { let path = root.choose_folder(); if path != "" { root.folder = path; } }
+                }
+            }
+
+            Text { text: "Status"; font-size: 14px; }
+            VerticalLayout {
+                spacing: 4px;
+                Text { text: root.status-state; font-size: 13px; font-weight: 600; }
+                if root.status-detail != "": Text {
+                    text: root.status-detail;
+                    font-size: 12px;
+                    color: Palette.alternate-foreground;
+                }
+            }
+
+            Text { text: "Actions"; font-size: 14px; }
+            HorizontalLayout {
+                spacing: 8px;
+                sync-btn := Button {
+                    text: "Sync now";
+                    enabled: root.sync-enabled;
+                    clicked => { root.sync_now(); }
+                }
+                Rectangle { } // spacer
+            }
+
+            Rectangle { height: 1px; background: Palette.border; }
+
+            Text { text: "Enable automatic sync"; font-size: 14px; }
+            Text {
+                text: "While your vault is unlocked, changes are written to the sync folder automatically (debounced). A pending write is flushed when the app closes.";
+                font-size: 12px;
+                color: Palette.alternate-foreground;
+            }
+            enable-check := CheckBox {
+                text: "Enable cloud sync";
+                checked <=> root.sync-enabled;
+                toggled => {
+                    let msg = root.set_sync_enabled(self.checked);
+                    if msg != "" { root.status-detail = msg; }
+                }
+            }
+
+            Rectangle { height: 1px; background: Palette.border; }
+
+            Text { text: "Restore from a folder"; font-size: 14px; }
+            Text {
+                text: "On a new machine, point Pandabox at a folder containing a pandabox.pbx file and enter its master password to restore your vault. If the file differs from your local vault, you will be asked what to do — nothing is ever overwritten silently.";
+                font-size: 12px;
+                color: Palette.alternate-foreground;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                restore-folder-input := TextInput {
+                    height: 32px;
+                    vertical-alignment: center;
+                    font-size: 13px;
+                }
+                restore-pw := TextInput {
+                    height: 32px;
+                    width: 180px;
+                    vertical-alignment: center;
+                    font-size: 13px;
+                }
+                restore-btn := Button {
+                    text: "Restore vault…";
+                    clicked => {
+                        root.restore-folder = restore-folder-input.text;
+                        let pw = restore-pw.text;
+                        root.restore_vault(pw);
+                        restore-pw.text = "";
+                    }
+                }
+            }
+
+            Rectangle { height: 1px; background: Palette.border; }
+
+            HorizontalLayout {
+                back-btn := Button {
+                    text: "Back to vault";
+                    clicked => { root.sync_back(); }
+                }
+            }
+        }
+    }
+
+    // Conflict modal (DESIGN D4): nothing is overwritten silently.
+    if root.show-conflict: Rectangle {
+        z: 10;
+        background: #00000060;
+        HorizontalLayout {
+            alignment: center;
+            VerticalLayout {
+                width: 560px;
+                spacing: 12px;
+                padding: 24px;
+                Rectangle {
+                    width: 1px;
+                }
+                Text {
+                    text: "Your vault and the synced file have diverged";
+                    font-size: 18px;
+                    font-weight: 600;
+                }
+                Text {
+                    text: root.conflict-detail;
+                    font-size: 13px;
+                    color: Palette.alternate-foreground;
+                }
+                Text {
+                    text: "Whichever you choose, the other side is kept as a backup copy (pandabox.pbx.conflict-…). Nothing is deleted.";
+                    font-size: 12px;
+                    color: Palette.alternate-foreground;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    import-btn := Button {
+                        text: "Import this file";
+                        clicked => { root.conflict_import(); }
+                    }
+                    keep-btn := Button {
+                        text: "Keep my local vault";
+                        clicked => { root.conflict_keep(); }
+                    }
+                    cancel-btn := Button {
+                        text: "Cancel";
+                        clicked => { root.conflict_cancel(); }
+                    }
+                }
+            }
+        }
+    }
+}

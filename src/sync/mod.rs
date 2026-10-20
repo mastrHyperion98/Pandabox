@@ -77,6 +77,7 @@ impl SyncEngine {
 
     /// Engine whose config file lives at `path` (used by tests and
     /// `with_path`-style setups).
+    #[allow(dead_code)] // exercised only by unit tests
     pub fn with_config_path(path: &std::path::Path) -> Self {
         let config = SyncConfig::load_from(path);
         Self::with_inner(SyncEngineInner {
@@ -120,6 +121,7 @@ impl SyncEngine {
         true
     }
 
+    #[allow(dead_code)] // exercised only by unit tests
     pub fn is_dirty(&self) -> bool {
         self.inner.dirty.get()
     }
@@ -211,8 +213,7 @@ impl SyncEngine {
     ///
     /// `locked` means no session is active (DESIGN D6): the app passes
     /// this in from `session_state`.
-    pub fn status(&self, locked: bool) -> (SyncState, String) {
-        let config = self.inner.config.borrow().clone();
+    pub fn status(&self, locked: bool) -> (SyncState, String) {        let config = self.inner.config.borrow().clone();
         if !config.is_enabled() {
             return (SyncState::Disabled, String::new());
         }
@@ -234,11 +235,37 @@ impl SyncEngine {
     }
 }
 
+/// User-facing wording for a sync state (consumed by the UI).
+pub fn sync_state_word(state: SyncState) -> &'static str {
+    match state {
+        SyncState::Disabled => "Disabled",
+        SyncState::Locked => "Vault locked — sync paused",
+        SyncState::InSync => "In sync",
+        SyncState::Pending => "Pending changes not yet synced",
+        SyncState::Error => "Sync error",
+    }
+}
+
+#[cfg(test)]
+mod state_word_tests {
+    use super::*;
+
+    #[test]
+    fn all_states_have_words() {
+        assert_eq!(sync_state_word(SyncState::Disabled), "Disabled");
+        assert_eq!(sync_state_word(SyncState::Locked), "Vault locked — sync paused");
+        assert_eq!(sync_state_word(SyncState::InSync), "In sync");
+        assert_eq!(sync_state_word(SyncState::Pending), "Pending changes not yet synced");
+        assert_eq!(sync_state_word(SyncState::Error), "Sync error");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::encrypt::cryptography::CryptEngine;
     use crate::sync::blob::decode_vault_blob;
+    use crate::sync::restore::ConflictChoice;
     use crate::sync::vault_export::{export_vault, vault_fingerprint};
     use crate::sync::writer::BLOB_FILE_NAME;
     use crate::sync::test_util::{TempDb, TEST_MASTER_PASSWORD};
@@ -392,5 +419,82 @@ mod tests {
         {
             let _ = (engine, session, folder);
         }
+    }
+
+    /// Two-machine story (CS-4.3): machine A syncs a vault; fresh machine
+    /// B (same salt, empty vault) restores it from the shared folder; then
+    /// both diverge and machine A resolves by importing B's side (the
+    /// loser is preserved as a conflict copy, D4/ADR 0003).
+    #[test]
+    fn two_machine_restore_and_conflict_flow() {
+        let salt = [0x7E; 32];
+
+        // Machine A: real vault, syncs to the folder.
+        let a = TempDb::new();
+        a.seed_with_salt(&salt, 3);
+        let sync_dir = a.dir.join("sync");
+        fs::create_dir_all(&sync_dir).unwrap();
+        let session_a = make_session(&a);
+        let engine_a = SyncEngine::with_config_path(&a.dir.join("cfg-a.json"));
+        engine_a
+            .set_config(SyncConfig::Enabled { folder: sync_dir.clone() })
+            .unwrap();
+        engine_a.mark_dirty();
+        engine_a.flush(&session_a).unwrap();
+        assert!(sync_dir.join(crate::sync::writer::BLOB_FILE_NAME).exists());
+
+        // Machine B: fresh vault (same salt, zero records) restores.
+        let b = TempDb::new();
+        b.seed_with_salt(&salt, 0);
+        let rv = restore::restore_from_folder_with_password(
+            &sync_dir, TEST_MASTER_PASSWORD, &b.manager,
+        )
+        .expect("restore on fresh machine");
+        let session_b = Session::new(rv.master_key.to_vec(), rv.engine, b.manager.clone());
+        assert_eq!(
+            b.manager.get_all_records().unwrap().len(),
+            3,
+            "restored record count"
+        );
+
+        // Both diverge: B adds a record and syncs; A adds one locally.
+        let engine_b = SyncEngine::with_config_path(&b.dir.join("cfg-b.json"));
+        engine_b
+            .set_config(SyncConfig::Enabled { folder: sync_dir.clone() })
+            .unwrap();
+        a.manager.insert_entry("a-only", "a", "a", "p1", "").unwrap();
+        b.manager.insert_entry("b-only", "b", "b", "p2", "").unwrap();
+        engine_b.mark_dirty();
+        engine_b.flush(&session_b).unwrap();
+
+        // A detects the divergence and imports B's side (A is older by mtime).
+        let cmp = engine_a.compare_with_remote(&session_a);
+        let restore::SyncComparison::Diverged { remote_newer, remote_bytes, .. } = cmp else {
+            panic!("expected Diverged, got {cmp:?}");
+        };
+        assert!(remote_newer, "B's blob was written after A's");
+        engine_a
+            .resolve_conflict(&session_a, ConflictChoice::Import, &remote_bytes)
+            .unwrap();
+        let a_records = a.manager.get_all_records().unwrap();
+        assert_eq!(a_records.len(), 4, "A now has its record + B's record");
+        assert!(
+            a_records.iter().any(|r| r.service == "b-only"),
+            "imported B's record"
+        );
+        // Import keeps the LOCAL vault (the loser) as a conflict copy in
+        // the local app directory (restore::resolve_conflict).
+        let has_conflict = fs::read_dir(&a.dir)
+            .unwrap()
+            .any(|e| e.unwrap().file_name().to_string_lossy().starts_with("pandabox.pbx.conflict-"));
+        assert!(
+            has_conflict,
+            "the loser is kept as a conflict copy (ADR 0003)"
+        );
+        assert_eq!(
+            engine_a.status(false).0,
+            SyncState::InSync,
+            "A's own vault is now the blob content → InSync"
+        );
     }
 }

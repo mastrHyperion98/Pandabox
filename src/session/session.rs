@@ -45,13 +45,6 @@ impl Session {
         &self.key
     }
 
-    /// The 256-bit session (master) key. Owned by this session in a
-    /// `Zeroizing` buffer and wiped when the session drops; callers
-    /// borrow it read-only (per `CryptEngine::seal`'s zeroization contract).
-    pub(crate) fn master_key(&self) -> &[u8] {
-        &self.key
-    }
-
     /// The Argon2-derived key (password + salt). Re-derivable on any
     /// machine that knows the password and salt — this is the key the
     /// sync blob is sealed with (docs/cloud-sync ADR 0002, v2 format).

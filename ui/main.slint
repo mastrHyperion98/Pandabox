@@ -1,13 +1,15 @@
 import { Button, Palette } from "std-widgets.slint";
 import { AuthView } from "auth-view.slint";
 import { ServiceView, AppData, FormMode} from "services-view.slint";
+import { SyncView } from "sync-view.slint";
 import { ServiceData } from "service-form.slint";
 import "./fonts/C059-Roman.otf";
 
 export enum Page {
     CreateDb,
     Authenticate,
-    Passlock
+    Passlock,
+    Sync
 }
 
 export { AppData }
@@ -23,6 +25,21 @@ export component EntryWindow inherits Window {
     callback import_csv();
     callback export_csv();
     callback sort_table(int, bool);
+    callback choose_folder() -> string;
+    callback set_sync_enabled(bool) -> string;
+    callback sync_now();
+    callback conflict_import();
+    callback conflict_keep();
+    callback conflict_cancel();
+    callback restore_vault(string);
+    callback sync_back();
+    in-out property <bool> sync-enabled: false;
+    in-out property <string> sync-folder: "";
+    in-out property <string> sync-status-state: "Disabled";
+    in-out property <string> sync-status-detail: "";
+    in-out property <bool> sync-show-conflict: false;
+    in-out property <string> sync-conflict-detail: "";
+    in-out property <string> sync-restore-folder: "";
 
     title: "Pandabox";
     min-width: 1280px;
@@ -54,8 +71,6 @@ export component EntryWindow inherits Window {
         
         VerticalLayout {
             spacing: 0px;
-            
-            // Menu Bar
             Rectangle {
                 height: 32px;
                 background: Palette.alternate-background;
@@ -224,6 +239,36 @@ export component EntryWindow inherits Window {
                         }
                     }
                 }
+                
+                Rectangle { height: 1px; background: Palette.border; }
+                
+                sync-item := TouchArea {
+                    height: 32px;
+                    clicked => {
+                        root.show-file-menu = false;
+                        root.current_page = Page.Sync;
+                    }
+                    
+                    Rectangle {
+                        background: sync-item.has-hover ? Palette.accent-background.darker(0.1) : transparent;
+                        border-radius: 2px;
+                        
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            spacing: 8px;
+                            
+                            Text {
+                                text: "☁️";
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: "Cloud Sync...";
+                                vertical-alignment: center;
+                                font-size: 13px;
+                            }
+                        }
+                    }
+                }
             }
         }
         
@@ -272,5 +317,23 @@ export component EntryWindow inherits Window {
                 }
             }
         }
+    }
+    
+    if current_page == Page.Sync: sync-view := SyncView {
+        sync-enabled <=> root.sync-enabled;
+        folder <=> root.sync-folder;
+        status-state <=> root.sync-status-state;
+        status-detail <=> root.sync-status-detail;
+        show-conflict <=> root.sync-show-conflict;
+        conflict-detail <=> root.sync-conflict-detail;
+        restore-folder <=> root.sync-restore-folder;
+        choose_folder() => { root.choose_folder() }
+        set_sync_enabled(b) => { root.set_sync_enabled(b) }
+        sync_now() => { root.sync_now() }
+        conflict_import() => { root.conflict_import() }
+        conflict_keep() => { root.conflict_keep() }
+        conflict_cancel() => { root.conflict_cancel() }
+        restore_vault(password) => { root.restore_vault(password) }
+        sync_back() => { root.sync_back() }
     }
 }

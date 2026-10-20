@@ -6,9 +6,11 @@ use slint::{Model, ModelRc, SharedString, StandardListViewItem, VecModel, Weak, 
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 use crate::database::manager::DatabaseManager;
 use crate::session::session::Session;
+use crate::sync::config::SyncConfig;
+use crate::sync::restore::{self, ConflictChoice};
 use crate::sync::SyncEngine;
 use arboard::Clipboard;
 use std::fs::File;
@@ -21,9 +23,6 @@ use log::{error, warn, info};
 mod database;
 mod encrypt;
 mod session;
-// Several items are consumed by CS-3 (restore) and CS-4 (UI);
-// keep the binary build warning-free until then.
-#[allow(dead_code)]
 mod sync;
 
 slint::include_modules!();
@@ -503,6 +502,70 @@ fn save_all_handler(ui_weak: Weak<EntryWindow>) {
     }
 }
 
+/// Apply the user's D4 conflict choice (docs/cloud-sync CS-4).
+fn apply_conflict_choice(
+    choice: ConflictChoice,
+    ui_weak: &Weak<EntryWindow>,
+    engine: &SyncEngine,
+    session_state: &Arc<Mutex<Option<Session>>>,
+    remote: &Arc<Mutex<Option<Vec<u8>>>>,
+) {
+    let Some(ui) = ui_weak.upgrade() else {
+        return;
+    };
+    // Lock the session first; only then take the remote bytes, so they
+    // are never dropped without being resolved (D4: nothing is lost
+    // silently). If the vault is busy the modal stays open and the
+    // choice is not lost.
+    let Ok(guard) = session_state.try_lock() else {
+        ui.set_sync_status_detail(SharedString::from("Vault busy — try again in a moment."));
+        return;
+    };
+    let Some(session) = guard.as_ref() else {
+        ui.set_sync_show_conflict(false);
+        return;
+    };
+    let bytes = match remote
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+    {
+        Some(b) => b,
+        None => {
+            ui.set_sync_show_conflict(false);
+            update_sync_status(ui_weak, engine, session_state);
+            return;
+        }
+    };
+    if let Err(e) = engine.resolve_conflict(session, choice, &bytes) {
+        // Keep the modal open, put the remote bytes back, and report the
+        // error so the user can retry or choose differently.
+        *remote.lock().unwrap_or_else(|e| e.into_inner()) = Some(bytes);
+        ui.set_sync_status_detail(SharedString::from(format!("Conflict resolution failed: {e}")));
+        return;
+    }
+    if choice == ConflictChoice::Import {
+        refresh_table_data(ui_weak, session);
+    }
+    ui.set_sync_show_conflict(false);
+    update_sync_status(ui_weak, engine, session_state);
+}
+
+/// Push the current sync status onto the UI (docs/cloud-sync CS-4.2).
+fn update_sync_status(
+    ui_weak: &Weak<EntryWindow>,
+    engine: &SyncEngine,
+    session_state: &Arc<Mutex<Option<Session>>>,
+) {
+    let Some(ui) = ui_weak.upgrade() else {
+        return;
+    };
+    let locked = session_state.try_lock().map(|g| g.is_none()).unwrap_or(true);
+    let (state, detail) = engine.status(locked);
+    ui.set_sync_status_state(SharedString::from(crate::sync::sync_state_word(state)));
+    ui.set_sync_status_detail(SharedString::from(detail));
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logger
     env_logger::Builder::from_default_env()
@@ -539,6 +602,9 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
     }
 
     let ui_weak = ui.as_weak();
+
+    // Clone before the callbacks take `manager` by move capture.
+    let manager_for_sync = manager.clone();
 
     ui.on_create_db_submitted(make_db_callback(
         manager.clone(),
@@ -577,7 +643,7 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                 if let Some(ui) = ui_weak.upgrade() {
                     ui.set_auth_error(false);
                     ui.set_current_page(Page::Passlock);
-                    refresh_table_data(&ui_weak, session_state.lock().unwrap().as_ref().unwrap());
+                    refresh_table_data(&ui_weak, session_state.lock().unwrap_or_else(|e| e.into_inner()).as_ref().unwrap());
                 }
             }
         } else {
@@ -699,6 +765,183 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
     let ui_weak_for_sort = ui_weak.clone();
     ui.on_sort_table(move |column: i32, ascending: bool| {
         sort_table_handler(column, ascending, &ui_weak_for_sort);
+    });
+
+    // --- Cloud sync UI (docs/cloud-sync CS-4) ---
+    let sync_remote: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
+
+    let ui_w = ui_weak.clone();
+    ui.on_choose_folder(move || {
+        match rfd::FileDialog::new().pick_folder() {
+            Some(path) => {
+                let p = SharedString::from(path.to_string_lossy().into_owned());
+                if let Some(ui) = ui_w.upgrade() {
+                    ui.set_sync_folder(p.clone());
+                }
+                p
+            }
+            None => SharedString::default(),
+        }
+    });
+
+    let engine = sync_engine.clone();
+    let ui_w = ui_weak.clone();
+    let state = session_state.clone();
+    ui.on_set_sync_enabled(move |enabled| {
+        let result: Result<(), String> = if enabled {
+            match engine.config().folder() {
+                Some(f) => engine
+                    .set_config(SyncConfig::Enabled { folder: f.clone() })
+                    .map_err(|e| e.to_string()),
+                None => Err("Choose a sync folder first".to_owned()),
+            }
+        } else {
+            engine.set_config(SyncConfig::Disabled).map_err(|e| e.to_string())
+        };
+        match result {
+            Ok(()) => {
+                let msg = if enabled {
+                    "Cloud sync enabled."
+                } else {
+                    "Cloud sync disabled. The synced file was left untouched."
+                };
+                update_sync_status(&ui_w, &engine, &state);
+                SharedString::from(msg)
+            }
+            Err(msg) => SharedString::from(msg),
+        }
+    });
+
+    let ui_w = ui_weak.clone();
+    let engine = sync_engine.clone();
+    let state = session_state.clone();
+    let remote = sync_remote.clone();
+    ui.on_sync_now(move || {
+        let Ok(guard) = state.try_lock() else {
+            update_sync_status(&ui_w, &engine, &state);
+            return;
+        };
+        let Some(session) = guard.as_ref() else {
+            update_sync_status(&ui_w, &engine, &state);
+            return;
+        };
+        match engine.compare_with_remote(session) {
+            restore::SyncComparison::InSync => {
+                let _ = engine.flush(session);
+                update_sync_status(&ui_w, &engine, &state);
+            }
+            restore::SyncComparison::Diverged { remote_bytes, remote_newer, .. } => {
+                *remote
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(remote_bytes);
+                if let Some(ui) = ui_w.upgrade() {
+                    ui.set_sync_show_conflict(true);
+                    ui.set_sync_conflict_detail(SharedString::from(if remote_newer {
+                        "The file in the sync folder appears newer than your local vault. Import it, or keep your local vault — the other side is saved as a backup copy."
+                    } else {
+                        "Your local vault appears newer than the file in the sync folder. Keep your local vault, or import the file — the other side is saved as a backup copy."
+                    }));
+                }
+            }
+            other => {
+                let detail = match other {
+                    restore::SyncComparison::NoFile => {
+                        "No pandabox.pbx file in the sync folder yet.".to_owned()
+                    }
+                    restore::SyncComparison::Undecodable => {
+                        "The synced file could not be read with this vault's key.".to_owned()
+                    }
+                    restore::SyncComparison::Io(e) => e,
+                    _ => String::new(),
+                };
+                if let Some(ui) = ui_w.upgrade() {
+                    if !detail.is_empty() {
+                        ui.set_sync_status_detail(SharedString::from(detail));
+                    }
+                }
+            }
+        }
+    });
+
+    let ui_w = ui_weak.clone();
+    let engine = sync_engine.clone();
+    let state = session_state.clone();
+    let remote = sync_remote.clone();
+    ui.on_conflict_import(move || apply_conflict_choice(
+        ConflictChoice::Import, &ui_w, &engine, &state, &remote,
+    ));
+    let ui_w = ui_weak.clone();
+    let engine = sync_engine.clone();
+    let state = session_state.clone();
+    let remote = sync_remote.clone();
+    ui.on_conflict_keep(move || apply_conflict_choice(
+        ConflictChoice::KeepLocal, &ui_w, &engine, &state, &remote,
+    ));
+    let ui_w = ui_weak.clone();
+    let engine = sync_engine.clone();
+    let state = session_state.clone();
+    let remote = sync_remote.clone();
+    ui.on_conflict_cancel(move || apply_conflict_choice(
+        ConflictChoice::Cancel, &ui_w, &engine, &state, &remote,
+    ));
+
+    let ui_w = ui_weak.clone();
+    let state = session_state.clone();
+    let manager_for_restore = manager_for_sync.clone();
+    ui.on_restore_vault(move |password: SharedString| {
+        let Some(ui) = ui_w.upgrade() else {
+            return;
+        };
+        let folder = ui.get_sync_restore_folder().as_str().to_owned();
+        if folder.trim().is_empty() {
+            ui.set_sync_status_detail(SharedString::from(
+                "Enter the path of a folder containing a pandabox.pbx file.",
+            ));
+            return;
+        }
+        let folder_path = std::path::PathBuf::from(folder);
+        // The password lives in a Zeroizing buffer for the duration of
+        // the restore and is wiped when the closure body ends.
+        let pw_bytes = Zeroizing::new(password.as_bytes().to_vec());
+        let pw: &str = match std::str::from_utf8(&pw_bytes) {
+            Ok(pw) => pw,
+            Err(_) => {
+                if let Some(ui) = ui_w.upgrade() {
+                    ui.set_sync_status_detail(SharedString::from(
+                        "Invalid password encoding; restore aborted.",
+                    ));
+                }
+                return;
+            }
+        };
+        match restore::restore_from_folder_with_password(&folder_path, pw, &manager_for_restore) {
+            Ok(rv) => {
+                let session = Session::new(rv.master_key.to_vec(), rv.engine, manager_for_restore.clone());
+                *state
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(session);
+                if let Some(ui) = ui_w.upgrade() {
+                    ui.set_sync_status_detail(SharedString::from("Vault restored."));
+                    ui.set_current_page(Page::Passlock);
+                }
+                refresh_table_data(&ui_w, state.lock().unwrap_or_else(|e| e.into_inner()).as_ref().unwrap());
+            }
+            Err(e) => {
+                if let Some(ui) = ui_w.upgrade() {
+                    ui.set_sync_status_detail(SharedString::from(format!("Restore failed: {e}")));
+                }
+            }
+        }
+    });
+
+    let ui_w = ui_weak.clone();
+    let engine = sync_engine.clone();
+    let state = session_state.clone();
+    ui.on_sync_back(move || {
+        if let Some(ui) = ui_w.upgrade() {
+            ui.set_current_page(Page::Passlock);
+        }
+        update_sync_status(&ui_w, &engine, &state);
     });
 
     ui.run().unwrap();
