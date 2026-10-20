@@ -22,6 +22,7 @@ export component EntryWindow inherits Window {
     callback save_all();
     callback import_csv();
     callback export_csv();
+    callback sort_table(int, bool);
 
     title: "Pandabox";
     min-width: 1280px;
@@ -118,6 +119,7 @@ export component EntryWindow inherits Window {
                 save_all() => { root.save_all() }
                 import_csv() => { root.import_csv() }
                 export_csv() => { root.export_csv() }
+                sort_table(column, ascending) => { root.sort_table(column, ascending) }
             }
         }
         
@@ -126,13 +128,14 @@ export component EntryWindow inherits Window {
             x: 8px;
             y: 32px;
             width: 180px;
+            height: file-menu-content.preferred-height;
             z: 100;
             background: Palette.background;
             border-radius: 4px;
             drop-shadow-blur: 8px;
             drop-shadow-color: #00000040;
             
-            VerticalLayout {
+            file-menu-content := VerticalLayout {
                 padding: 4px;
                 spacing: 2px;
                 
@@ -229,13 +232,14 @@ export component EntryWindow inherits Window {
             x: 58px;
             y: 32px;
             width: 150px;
+            height: help-menu-content.preferred-height;
             z: 100;
             background: Palette.background;
             border-radius: 4px;
             drop-shadow-blur: 8px;
             drop-shadow-color: #00000040;
             
-            VerticalLayout {
+            help-menu-content := VerticalLayout {
                 padding: 4px;
                 spacing: 2px;
                 

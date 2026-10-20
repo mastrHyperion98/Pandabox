@@ -214,6 +214,91 @@ fn insert_entry(session: &Session, service: &SharedString, email: &SharedString,
     }
 }
 
+fn sort_table_handler(column: i32, ascending: bool, ui_weak: &Weak<EntryWindow>) {
+    let ui = match ui_weak.upgrade() {
+        Some(ui) => ui,
+        None => return,
+    };
+
+    let table_model_handle = ui.global::<AppData>().get_table_rows();
+    let model = match table_model_handle
+        .as_any()
+        .downcast_ref::<VecModel<ModelRc<StandardListViewItem>>>()
+    {
+        Some(model) => model,
+        None => {
+            error!("Could not access the table model as a VecModel");
+            show_error_toast(ui_weak, "Sort failed: table model unavailable");
+            return;
+        }
+    };
+
+    let row_count = model.row_count();
+    if row_count == 0 {
+        return;
+    }
+
+    let column = column as usize;
+
+    // Pull each row out of the model as a vector of cells, pairing it with a
+    // single case-insensitive sort key for the clicked column. Rows shorter
+    // than `column` sort under an empty key instead of panicking.
+    let mut entries: Vec<(String, Vec<StandardListViewItem>)> = (0..row_count)
+        .filter_map(|i| model.row_data(i))
+        .map(|row| {
+            let cell_count = row.row_count();
+            let cells: Vec<StandardListViewItem> =
+                (0..cell_count).filter_map(|j| row.row_data(j)).collect();
+            let key = cells
+                .get(column)
+                .map(|cell| cell.text.as_str().to_lowercase())
+                .unwrap_or_default();
+            (key, cells)
+        })
+        .collect();
+
+    if entries.is_empty() {
+        return;
+    }
+
+    // Detect whether every value in the clicked column is numeric, so the
+    // ID column sorts numerically (1, 2, 10, 11) instead of
+    // lexicographically (1, 10, 11, ..., 2).
+    let all_numeric = entries
+        .iter()
+        .all(|(key, _)| key.parse::<i64>().is_ok());
+
+    // Stable sort by the precomputed key (one allocation per row, not per comparison)
+    entries.sort_by(|a, b| {
+        let ord = if all_numeric {
+            let va = a.0.parse::<i64>().unwrap_or(0);
+            let vb = b.0.parse::<i64>().unwrap_or(0);
+            va.cmp(&vb)
+        } else {
+            a.0.cmp(&b.0)
+        };
+        if ascending {
+            ord
+        } else {
+            ord.reverse()
+        }
+    });
+
+    // Wipe the derived key material now that the order is fixed, so the
+    // temporary lowercase copies do not linger in memory.
+    for (key, _) in entries.iter_mut() {
+        key.zeroize();
+    }
+
+    let new_model = Rc::new(VecModel::default());
+    for (_, cells) in entries {
+        new_model.push(ModelRc::new(VecModel::from(cells)));
+    }
+
+    ui.global::<AppData>().set_table_rows(ModelRc::from(new_model));
+    info!("Sorted table by column {} ({})", column, if ascending { "ascending" } else { "descending" });
+}
+
 fn delete_entry(index: SharedString, session: &Session, ui_weak: Weak<EntryWindow>) {
     // Get the table model
     if let Some(_ui) = ui_weak.upgrade() {
@@ -592,6 +677,11 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
     let ui_weak_for_save = ui_weak.clone();
     ui.on_save_all(move || {
         save_all_handler(ui_weak_for_save.clone());
+    });
+
+    let ui_weak_for_sort = ui_weak.clone();
+    ui.on_sort_table(move |column: i32, ascending: bool| {
+        sort_table_handler(column, ascending, &ui_weak_for_sort);
     });
 
     ui.run().unwrap();
