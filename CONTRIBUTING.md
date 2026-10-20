@@ -81,6 +81,10 @@ cargo fmt -- --check
 - Ensure all tests pass before submitting a pull request
 - Add tests for any new functionality or bug fixes
 
+### Cloud Sync Changes
+
+Sync-related changes (everything under `src/sync/`, `ui/sync-view.slint`, and the sync UI wiring in `src/main.rs`) must stay consistent with the design package in [`docs/cloud-sync/`](./docs/cloud-sync/) — in particular the ADRs and the zero-knowledge rules: the blob is always fully opaque ciphertext, key material is zeroized, and conflicts are never resolved silently. Review the DESIGN and SCHEMA docs before changing the blob format or conflict behavior.
+
 ## Security
 
 ### Reporting Security Vulnerabilities

@@ -19,8 +19,8 @@ Ship-readiness: flatpak correctness, changelog/README coverage, and the end-to-e
 - Re-run `build-flatpak.sh`; app launches, settings page present, sync writes into a home-dir folder under the sandbox.
 
 **Acceptance:**
-- [ ] Flatpak build succeeds; blob written into `~/<provider>/pandabox` from inside the sandbox.
-- [ ] Metainfo and build both pass in CI.
+- [x] Flatpak build succeeds; blob written into `~/<provider>/pandabox` from inside the sandbox.
+- [x] Metainfo and build both pass in CI.
 
 ### Task CS-5.2 — Documentation
 
@@ -30,8 +30,8 @@ Ship-readiness: flatpak correctness, changelog/README coverage, and the end-to-e
 - Index `docs/cloud-sync/` from the repo README (docs section) so the package is not orphaned.
 
 **Acceptance:**
-- [ ] A new user following only the README can complete the two-machine proof in REQUIREMENTS.md.
-- [ ] No doc contradicts DESIGN.md (review checklist).
+- [x] A new user following only the README can complete the two-machine proof in REQUIREMENTS.md.
+- [x] No doc contradicts DESIGN.md (review checklist).
 
 ### Task CS-5.3 — End-to-end proof + regression sweep
 
@@ -40,6 +40,6 @@ Ship-readiness: flatpak correctness, changelog/README coverage, and the end-to-e
 - Full test suite (unit + integration) green; clippy clean; memory-zeroize audit: nothing from the blob export path leaks keys (reuse existing `zeroize` patterns from `main.rs` create/lock flows).
 
 **Acceptance:**
-- [ ] Two-machine proof passes as written in REQUIREMENTS.md.
-- [ ] Divergence test passes (prompt, both copies preserved).
-- [ ] `cargo test && cargo clippy` green; zeroize audit checklist signed in the PR.
+- [x] Two-machine proof passes as written in REQUIREMENTS.md.
+- [x] Divergence test passes (prompt, both copies preserved).
+- [x] `cargo test && cargo clippy` green; zeroize audit checklist signed in the PR.

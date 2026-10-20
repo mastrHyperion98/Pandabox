@@ -13,6 +13,7 @@ Pandabox is a secure, open-source password manager built with Rust, offering rob
 - 📝 Secure notes storage
 - 🔍 Easy credential management
 - 📊 Sortable table - click any column header to sort ascending/descending
+- ☁️ Optional folder-based cloud sync (zero-knowledge, encrypted blob)
 
 ## Security Architecture
 
@@ -43,6 +44,32 @@ Pandabox employs a multi-layered security approach to protect your sensitive dat
 - **Secure Memory Handling**: Sensitive data is wiped from memory when no longer needed
 - **Defense in Depth**: Multiple layers of protection against various attack vectors
 - **Open Source**: Full transparency with the security community
+
+## Backup & Sync
+
+Pandabox has an **optional** folder-based cloud sync (off by default). It is zero-knowledge: it writes a single fully-encrypted file (`pandabox.pbx`) into a folder you choose — a Nextcloud/OneDrive/Syncthing/iCloud Drive/Google Drive sync folder, a USB stick, or any local directory. The file is ChaCha20-Poly1305 AEAD ciphertext; nothing readable (not even a record name) ever appears on disk, and the sync provider only ever sees ciphertext.
+
+### How to enable
+
+1. Open **File → Cloud Sync…** in the app.
+2. Tick **Enable cloud sync** and choose a sync folder (any folder you have read/write access to).
+3. Your vault is written to `<folder>/pandabox.pbx` automatically about 2 seconds after any change (and on exit).
+
+Disabling sync never deletes the file in your folder — it simply stops updating it.
+
+### Restoring on a new machine
+
+On the new machine, open **File → Cloud Sync…** and use the **Restore from a folder** panel: enter the path of the folder containing `pandabox.pbx` and your master password. Your vault is replaced by the file's contents and the app unlocks.
+
+### Conflicts (two machines changed)
+
+If the file in your folder differs from your local vault (e.g. both machines edited it), Pandabox **never overwrites silently**: it shows a prompt where you choose **Import** (take the file) or **Keep local** (the file is left untouched). The side you did not choose is preserved as a backup file `pandabox.pbx.conflict-<timestamp>` so nothing is ever lost. After resolving, choose Import or Keep local to finish.
+
+### Flatpak note
+
+The Flatpak build grants access to your **home directory** only, so the sync folder must live under `~/`. Paths on other mounts (e.g. `/mnt/…`) are not accessible from the sandbox; the native (non-Flatpak) build has no such restriction.
+
+Full design, schema and ADRs: [`docs/cloud-sync/`](./docs/cloud-sync/).
 
 ## Getting Started
 
