@@ -43,7 +43,14 @@ pub fn write_vault_blob(folder: &Path, session: &Session) -> Result<PathBuf, Syn
     let mut vault = vault_export::export_vault(session.database_manager())
         .map_err(|e| SyncError::Export(e.to_string()))?;
     let json = Zeroizing::new(vault_export::canonical_bytes(&vault));
-    let blob = blob::encode_vault_blob(&json, session.master_key()).map_err(|_| SyncError::Crypto)?;
+    let blob = match blob::encode_vault_blob(&json, session.master_key()) {
+        Ok(b) => b,
+        // Wipe the plaintext export before returning on failure too.
+        Err(_) => {
+            vault_export::zeroize_vault(&mut vault);
+            return Err(SyncError::Crypto);
+        }
+    };
     vault_export::zeroize_vault(&mut vault);
 
     let target = folder.join(BLOB_FILE_NAME);

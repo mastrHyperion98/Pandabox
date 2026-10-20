@@ -42,6 +42,9 @@ struct SyncEngineInner {
     #[allow(dead_code)] // read by CS-4 status plumbing
     config_path: Option<PathBuf>,
     dirty: Cell<bool>,
+    // A debounced flush is already pending (prevents stacking one
+    // single-shot timer per mutation).
+    flush_scheduled: Cell<bool>,
     last_sync_at: std::cell::RefCell<Option<String>>,
     last_error: std::cell::RefCell<Option<String>>,
 }
@@ -65,6 +68,7 @@ impl SyncEngine {
             config: std::cell::RefCell::new(config),
             config_path: None,
             dirty: Cell::new(false),
+            flush_scheduled: Cell::new(false),
             last_sync_at: std::cell::RefCell::new(None),
             last_error: std::cell::RefCell::new(None),
         })
@@ -78,6 +82,7 @@ impl SyncEngine {
             config: std::cell::RefCell::new(config),
             config_path: Some(path.to_path_buf()),
             dirty: Cell::new(false),
+            flush_scheduled: Cell::new(false),
             last_sync_at: std::cell::RefCell::new(None),
             last_error: std::cell::RefCell::new(None),
         })
@@ -119,11 +124,14 @@ impl SyncEngine {
     }
 
     /// Mark dirty and schedule the debounced flush on the event loop.
-    /// The flush only runs while a session is active (DESIGN D6).
+    /// At most one timer is outstanding: repeat mutations within the
+    /// debounce window reuse the pending flush. The flush only runs
+    /// while a session is active (DESIGN D6).
     pub fn arm_with_timer(&self, session_state: &Arc<Mutex<Option<Session>>>) {
-        if !self.mark_dirty() {
+        if !self.mark_dirty() || self.inner.flush_scheduled.get() {
             return;
         }
+        self.inner.flush_scheduled.set(true);
         let engine = self.clone();
         let state = Arc::clone(session_state);
         let timer = Timer::default();
@@ -131,6 +139,7 @@ impl SyncEngine {
             TimerMode::SingleShot,
             SYNC_DEBOUNCE,
             move || {
+                engine.inner.flush_scheduled.set(false);
                 if let Ok(guard) = state.try_lock() {
                     if let Some(session) = guard.as_ref() {
                         // flush() already logs and records failures; the
@@ -140,6 +149,9 @@ impl SyncEngine {
                 }
             },
         );
+        // Single-shot timers fire exactly once; forgetting keeps the
+        // timer alive until it fires (the standard slint pattern, same
+        // as the toast timers in this app).
         std::mem::forget(timer);
     }
 
