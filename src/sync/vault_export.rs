@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
 pub const VAULT_MAGIC: &str = "PBXS";
-pub const VAULT_VERSION: u8 = 1;
+pub const VAULT_VERSION: u8 = 2;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -155,12 +155,13 @@ mod tests {
             .all(|w| w[0].id < w[1].id),
             "records sorted by id");
 
-        // Base64 fields decode back to the seeded bytes.
+        // Base64 fields decode back to the seeded values.
+        let master = db.manager.get_master_record().expect("master");
         assert_eq!(
             base64::engine::general_purpose::STANDARD
                 .decode(&a.master.salt)
                 .expect("salt b64"),
-            [0xA5; 32]
+            master.salt
         );
 
         // Same state ⇒ same fingerprint even though exported_at may differ.

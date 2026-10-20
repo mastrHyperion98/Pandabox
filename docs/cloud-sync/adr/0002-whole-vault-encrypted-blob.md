@@ -13,7 +13,7 @@ Sync must not leak the current plaintext structure of the local DB: `records.ser
 
 ## Decision
 
-The blob (`pandabox.pbx`) is **one ChaCha20-Poly1305 AEAD ciphertext over canonical JSON of the entire vault** — `master_table` row (salt, nonce, encrypted master key) plus all `records` rows — keyed with the session master key already held in `Session` (D1, SCHEMA.md). No unencrypted headers, no visible magic; version and magic live inside the ciphertext. Full-vault, whole-file writes; no delta sync.
+The blob (`pandabox.pbx`) is **one ChaCha20-Poly1305 AEAD ciphertext over canonical JSON of the entire vault** — `master_table` row (salt, nonce, encrypted master key) plus all `records` rows (D1, SCHEMA.md). No unencrypted headers, no visible magic; version and magic live inside the ciphertext. The blob is sealed with the **Argon2-derived session key** (password + salt), and the v2 format appends the public 32-byte master-record salt so a fresh machine can derive a candidate key from the master password alone — the random master key itself is only recoverable from the vault, which is why the derived key (not the master key) is the sealing key. Full-vault, whole-file writes; no delta sync.
 
 ## Alternatives considered
 
@@ -24,7 +24,7 @@ The blob (`pandabox.pbx`) is **one ChaCha20-Poly1305 AEAD ciphertext over canoni
 **Rejected.** Multiple small files in the cloud folder leak count/timing/structure, invite partial sync, and make conflict handling per-row instead of per-vault.
 
 ### Alt 3 — Derive a separate sync key (e.g. HKDF from master key)
-**Rejected.** The session master key is already in memory, zeroized on logout, and the same ChaCha20-Poly1305 path is proven. A second derivation adds attack surface and key-lifecycle code for no benefit.
+**Rejected.** A fresh machine can only derive `Argon2(password, salt)`; the random master key is unrecoverable before the vault authenticates. The derived key is therefore the natural sealing key, and it is the same proven ChaCha20-Poly1305 path. A second derivation adds attack surface and key-lifecycle code for no benefit.
 
 ## Consequences
 

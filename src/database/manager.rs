@@ -62,6 +62,10 @@ impl DatabaseManager {
         DatabaseManager { database_url }
     }
 
+    pub fn database_path(&self) -> std::path::PathBuf {
+        std::path::PathBuf::from(&self.database_url)
+    }
+
     fn establish_connection(&self) -> SqliteConnection {
         SqliteConnection::establish(&self.database_url)
             .unwrap_or_else(|_| panic!("Error connecting to {}", self.database_url))

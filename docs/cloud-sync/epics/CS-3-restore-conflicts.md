@@ -14,8 +14,9 @@ Let the user restore the vault from a folder (fresh machine) and make divergence
 ### Task CS-3.1 — Restore flow (fresh machine)
 
 **Do:**
-- `restore_from_folder(path)` in `vault_import.rs` glue: read `pandabox.pbx`, prompt the app for a candidate master password (reuses existing `Authenticate` page flow), `decode_vault_blob`, then `import_vault` into the local DB (replace master record + records, transactional, CS-1.3).
-- After successful import the app proceeds to the normal lock/unlock cycle with the restored master record.
+- `restore_from_folder_with_password(path, password)` in `restore.rs`: read `pandabox.pbx`, derive the engine key from (password, blob's public salt), AEAD-decode, validate, and decrypt the vault's master record with the engine key (second authentication check) before `import_vault`.
+- Return `RestoredVault { master_key, engine }` so the app can build a `Session` without re-authenticating.
+- The UI wiring (folder picker, password prompt reusing the Authenticate flow) lands in CS-4.
 
 **Acceptance:**
 - [ ] Fresh-install test: folder containing a blob from another DB file ⇒ after password entry, local vault identical (records + master row).

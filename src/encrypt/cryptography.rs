@@ -33,6 +33,12 @@ impl CryptEngine {
         })
     }
 
+    /// The Argon2-derived key. Owned by this engine (zeroized on
+    /// drop); callers borrow it read-only.
+    pub(crate) fn derived_key(&self) -> &[u8] {
+        &self.key
+    }
+
     //Derive key.  This is a separate function so that it can be called after password verification
     fn derive_key(password: &str, salt: &[u8]) -> Vec<u8> {
         let params = ParamsBuilder::new()
