@@ -135,15 +135,15 @@ mod tests {
         source.seed(1);
         let vault = export_vault(&source.manager).expect("export");
 
-        // A well-formed file with version 2 must be rejected.
+        // A well-formed file with an unknown version must be rejected.
         let mut vault2 = vault;
-        vault2.version = 2;
+        vault2.version = 3;
         let json2 = canonical_bytes(&vault2);
 
         let target = TempDb::new();
         target.seed(2);
         let err = import_vault(&json2, &target.manager).unwrap_err();
-        assert!(matches!(err, VaultImportError::UnsupportedVersion(2)));
+        assert!(matches!(err, VaultImportError::UnsupportedVersion(3)));
         assert_eq!(
             target.manager.get_all_records().expect("records").len(),
             2,
@@ -189,7 +189,8 @@ mod tests {
 
         let mut key = vec![0u8; 32];
         rand::rng().fill_bytes(&mut key);
-        let blob = encode_vault_blob(&json, &key).expect("encode");
+        let master = source.manager.get_master_record().expect("master");
+        let blob = encode_vault_blob(&json, &key, &master.salt).expect("encode");
 
         // Correct key: import succeeds, vault content matches.
         let target = TempDb::new();

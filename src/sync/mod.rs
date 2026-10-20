@@ -6,6 +6,7 @@
 
 pub mod blob;
 pub mod config;
+pub mod restore;
 pub mod vault_export;
 pub mod vault_import;
 pub mod writer;
@@ -184,6 +185,28 @@ impl SyncEngine {
         }
     }
 
+    /// Compare the local vault with the synced file (DESIGN D4).
+    /// `NoFile` when sync is disabled.
+    pub fn compare_with_remote(&self, session: &Session) -> crate::sync::restore::SyncComparison {
+        match self.config().folder() {
+            Some(f) => crate::sync::restore::compare_with_local(f, session),
+            None => crate::sync::restore::SyncComparison::NoFile,
+        }
+    }
+
+    /// Apply the user's D4 conflict choice in the configured folder.
+    pub fn resolve_conflict(
+        &self,
+        session: &Session,
+        choice: crate::sync::restore::ConflictChoice,
+        remote_bytes: &[u8],
+    ) -> Result<(), crate::sync::restore::ResolveError> {
+        match self.config().folder() {
+            Some(f) => crate::sync::restore::resolve_conflict(f, session, choice, remote_bytes),
+            None => Ok(()),
+        }
+    }
+
     /// UI-facing status (consumed by CS-4).
     ///
     /// `locked` means no session is active (DESIGN D6): the app passes
@@ -218,14 +241,17 @@ mod tests {
     use crate::sync::blob::decode_vault_blob;
     use crate::sync::vault_export::{export_vault, vault_fingerprint};
     use crate::sync::writer::BLOB_FILE_NAME;
-    use crate::sync::test_util::TempDb;
+    use crate::sync::test_util::{TempDb, TEST_MASTER_PASSWORD};
     use std::fs;
 
     /// Build a real Session (Argon2-derived engine) over `db`.
     fn make_session(db: &TempDb) -> Session {
         let master = db.manager.get_master_record().expect("master record");
-        let engine = CryptEngine::new("correct horse battery staple", &master.salt).expect("engine");
-        let key = vec![0x11; 32]; // arbitrary but valid 256-bit session key
+        let engine =
+            CryptEngine::new(TEST_MASTER_PASSWORD, &master.salt).expect("engine");
+        let key = engine
+            .decrypt_master_key(&master.nonce, &master.encrypted_master_key)
+            .expect("decrypt master key");
         Session::new(key, engine, db.manager.clone())
     }
 
@@ -246,7 +272,7 @@ mod tests {
         engine.flush(&session).expect("flush");
 
         let blob_bytes = fs::read(folder.join(BLOB_FILE_NAME)).expect("blob file");
-        let json = decode_vault_blob(&blob_bytes, &[0x11; 32]).expect("decode");
+        let json = decode_vault_blob(&blob_bytes, session.engine_key()).expect("decode");
         let exported = export_vault(&db.manager).expect("export");
         assert_eq!(
             vault_fingerprint(&crate::sync::vault_import::parse_vault(&json).expect("parse")),

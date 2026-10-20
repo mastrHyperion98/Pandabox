@@ -2,23 +2,28 @@
 
 ## Vault blob (`pandabox.pbx`)
 
-A single ChaCha20-Poly1305 AEAD ciphertext (tag inside the ciphertext) over the canonical vault JSON. No plaintext prefix, no unencrypted headers — the file must be indistinguishable from noise (D1).
+Layout (version 2): `nonce(12) || ciphertext+tag || salt(32)`. A single
+ChaCha20-Poly1305 AEAD ciphertext (tag included) over the canonical vault
+JSON, sealed with the **Argon2-derived session key** — re-derivable on any
+machine from the master password and the vault salt. The 12-byte nonce is a
+public AEAD parameter; the appended 32-byte salt is the vault's master-record
+salt (public by design), so a fresh machine can validate the master password
+without any local state. No other plaintext is visible.
 
 | Segment | Size | Notes |
 |---------|------|-------|
-| magic | 4 B | `PBXS` — **stored inside the ciphertext**, i.e. part of the plaintext JSON, not a visible file prefix. File magic is undefined on purpose. |
-| version | 1 u8 | `1`. Stored as `"version": 1` in the JSON. Unknown version ⇒ reject with a clear error, never attempt decode. |
-| nonce | 12 B | Random per write (existing `CryptEngine::generate_nonce`); never reused across writes with the same key. |
-| ciphertext + tag | var | `CryptEngine::encrypt_record(json_bytes, session_master_key)`. |
+| nonce | 12 B | Random per write (existing `CryptEngine::generate_nonce`); never reused across writes with the same key |
+| ciphertext + tag | var | `CryptEngine::seal(json, engine_key)` — the JSON includes magic/version |
+| salt | 32 B | Public master-record salt (v2 addition for password-based restore) |
 
-Decryption: `CryptEngine::decrypt_record` with the candidate master key; the Poly1305 tag authenticates both content and key (wrong master password ⇒ auth failure, not garbage).
+Decryption: `CryptEngine::open` with the candidate engine key; the Poly1305 tag authenticates both content and key (wrong master password ⇒ auth failure, not garbage). Fresh-machine restore: `open_blob_with_password` derives the engine key from (password, blob salt), opens the blob, and additionally validates the password by decrypting the vault's master record with that key.
 
 ### Canonical vault JSON (the plaintext)
 
 ```json
 {
   "magic": "PBXS",
-  "version": 1,
+  "version": 2,
   "exported_at": "2026-02-14T12:34:56Z",
   "master": {
     "encrypted_master_key": "<base64>",

@@ -52,6 +52,13 @@ impl Session {
         &self.key
     }
 
+    /// The Argon2-derived key (password + salt). Re-derivable on any
+    /// machine that knows the password and salt — this is the key the
+    /// sync blob is sealed with (docs/cloud-sync ADR 0002, v2 format).
+    pub(crate) fn engine_key(&self) -> &[u8] {
+        self.crypto_engine.derived_key()
+    }
+
     pub fn database_manager(&self) -> &Rc<DatabaseManager> {
         &self.database_manager
     }

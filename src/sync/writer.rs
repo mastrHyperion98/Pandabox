@@ -7,6 +7,7 @@
 use crate::session::session::Session;
 use crate::sync::blob;
 use crate::sync::vault_export;
+use base64::Engine;
 use std::fs;
 use std::path::{Path, PathBuf};
 use zeroize::{Zeroize, Zeroizing};
@@ -43,7 +44,13 @@ pub fn write_vault_blob(folder: &Path, session: &Session) -> Result<PathBuf, Syn
     let mut vault = vault_export::export_vault(session.database_manager())
         .map_err(|e| SyncError::Export(e.to_string()))?;
     let mut json = Zeroizing::new(vault_export::canonical_bytes(&vault));
-    let blob = match blob::encode_vault_blob(&json, session.master_key()) {
+    // The vault's master-record salt is a public parameter of the blob
+    // (lets a fresh machine validate the master password); keep a copy
+    // before the export is wiped.
+    let salt = base64::engine::general_purpose::STANDARD
+        .decode(&vault.master.salt)
+        .map_err(|e| SyncError::Export(e.to_string()))?;
+    let blob = match blob::encode_vault_blob(&json, session.engine_key(), &salt) {
         Ok(b) => b,
         // Wipe the plaintext export before returning on failure too.
         Err(_) => {
