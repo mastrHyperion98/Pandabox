@@ -19,7 +19,8 @@ use zeroize::Zeroizing;
 
 /// The decrypted master key and Argon2 engine needed to build a
 /// `Session` after a fresh-machine restore. The key is a `Zeroizing`
-/// buffer; hand it to `Session::new` via `Zeroizing::into_inner`.
+/// buffer; hand a copy to `Session::new` (e.g. `master_key.to_vec()`) —
+/// the buffer itself is wiped when `RestoredVault` drops.
 pub struct RestoredVault {
     pub master_key: Zeroizing<Vec<u8>>,
     pub engine: CryptEngine,
@@ -112,7 +113,7 @@ pub fn compare_with_local(folder: &Path, session: &Session) -> SyncComparison {
     };
 
     let json = match blob::decode_vault_blob(&bytes, session.engine_key()) {
-        Ok(j) => Zeroizing::new(j),
+        Ok(j) => j,
         Err(_) => return SyncComparison::Undecodable,
     };
     let remote = match parse_vault(&json) {
