@@ -9,6 +9,7 @@ use crate::sync::blob;
 use crate::sync::vault_export;
 use std::fs;
 use std::path::{Path, PathBuf};
+use zeroize::Zeroizing;
 
 #[derive(Debug)]
 pub enum SyncError {
@@ -36,9 +37,14 @@ impl std::error::Error for SyncError {}
 /// buffer (wiped when the session drops); this function only borrows
 /// it, as required by `CryptEngine::seal`'s contract.
 pub fn write_vault_blob(folder: &Path, session: &Session) -> Result<PathBuf, SyncError> {
-    let vault = vault_export::export_vault(session.database_manager())
-        .map_err(|e| SyncError::Export(e.to_string()))?;
-    let json = vault_export::canonical_bytes(&vault);
+    // The export and its canonical JSON are plaintext (service names,
+    // emails, usernames, notes); keep them in Zeroizing buffers so they
+    // are wiped when the function returns.
+    let vault = Zeroizing::new(
+        vault_export::export_vault(session.database_manager())
+            .map_err(|e| SyncError::Export(e.to_string()))?,
+    );
+    let json = Zeroizing::new(vault_export::canonical_bytes(&vault));
     let blob = blob::encode_vault_blob(&json, session.master_key()).map_err(|_| SyncError::Crypto)?;
 
     let target = folder.join(BLOB_FILE_NAME);
