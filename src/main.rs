@@ -515,9 +515,10 @@ fn apply_conflict_choice(
     };
     // Lock the session first; only then take the remote bytes, so they
     // are never dropped without being resolved (D4: nothing is lost
-    // silently).
+    // silently). If the vault is busy the modal stays open and the
+    // choice is not lost.
     let Ok(guard) = session_state.try_lock() else {
-        ui.set_sync_show_conflict(false);
+        ui.set_sync_status_detail(SharedString::from("Vault busy — try again in a moment."));
         return;
     };
     let Some(session) = guard.as_ref() else {
@@ -537,7 +538,11 @@ fn apply_conflict_choice(
         }
     };
     if let Err(e) = engine.resolve_conflict(session, choice, &bytes) {
+        // Keep the modal open, put the remote bytes back, and report the
+        // error so the user can retry or choose differently.
+        *remote.lock().unwrap_or_else(|e| e.into_inner()) = Some(bytes);
         ui.set_sync_status_detail(SharedString::from(format!("Conflict resolution failed: {e}")));
+        return;
     }
     if choice == ConflictChoice::Import {
         refresh_table_data(ui_weak, session);
@@ -898,7 +903,17 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
         // The password lives in a Zeroizing buffer for the duration of
         // the restore and is wiped when the closure body ends.
         let pw_bytes = Zeroizing::new(password.as_bytes().to_vec());
-        let pw: &str = std::str::from_utf8(&pw_bytes).unwrap_or("");
+        let pw: &str = match std::str::from_utf8(&pw_bytes) {
+            Ok(pw) => pw,
+            Err(_) => {
+                if let Some(ui) = ui_w.upgrade() {
+                    ui.set_sync_status_detail(SharedString::from(
+                        "Invalid password encoding; restore aborted.",
+                    ));
+                }
+                return;
+            }
+        };
         match restore::restore_from_folder_with_password(&folder_path, pw, &manager_for_restore) {
             Ok(rv) => {
                 let session = Session::new(rv.master_key.to_vec(), rv.engine, manager_for_restore.clone());
