@@ -62,7 +62,7 @@ pub fn restore_from_folder_with_password(
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(RestoreError::NoVaultFile),
         Err(e) => return Err(RestoreError::Io(e.to_string())),
     };
-    let (json, key, engine) =
+    let (json, engine) =
         blob::open_blob_with_password(&bytes, password).map_err(|_| RestoreError::Decoding)?;
     let vault = parse_vault(&json).map_err(RestoreError::Import)?;
     // The vault's master key decrypts with the derived key; this second
@@ -76,7 +76,7 @@ pub fn restore_from_folder_with_password(
                 .map_err(|e| RestoreError::Import(VaultImportError::Base64(e.to_string())))?,
         )
         .map_err(|_| RestoreError::Decoding)?;
-    import_blob(&bytes, &key, manager).map_err(RestoreError::Import)?;
+    import_blob(&bytes, engine.derived_key(), manager).map_err(RestoreError::Import)?;
     Ok(RestoredVault {
         master_key: Zeroizing::new(master_key),
         engine,
@@ -110,7 +110,7 @@ pub fn compare_with_local(folder: &Path, session: &Session) -> SyncComparison {
     };
 
     let json = match blob::decode_vault_blob(&bytes, session.engine_key()) {
-        Ok(j) => j,
+        Ok(j) => Zeroizing::new(j),
         Err(_) => return SyncComparison::Undecodable,
     };
     let remote = match parse_vault(&json) {

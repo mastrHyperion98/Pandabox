@@ -46,20 +46,20 @@ pub fn decode_vault_blob(blob: &[u8], key: &[u8]) -> Result<Vec<u8>, BlobError> 
 
 /// Open a blob on a machine with no local vault state: the master
 /// password plus the blob's public salt derive a candidate key.
-/// Returns `(canonical vault JSON, derived engine key, engine)`; the
-/// JSON and key are `Zeroizing` buffers, wiped on drop.
+/// Returns `(canonical vault JSON, engine)`; the JSON is a `Zeroizing`
+/// buffer, wiped on drop. Callers needing the derived key use
+/// `engine.derived_key()` (borrow) rather than a second copy.
 pub fn open_blob_with_password(
     blob: &[u8],
     password: &str,
-) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>, CryptEngine), BlobError> {
+) -> Result<(Zeroizing<Vec<u8>>, CryptEngine), BlobError> {
     if blob.len() < 12 + 16 + SALT_LENGTH {
         return Err(chacha20poly1305::Error);
     }
     let salt = &blob[blob.len() - SALT_LENGTH..];
     let engine = CryptEngine::new(password, salt).map_err(|_| chacha20poly1305::Error)?;
-    let key = Zeroizing::new(engine.derived_key().to_vec());
-    let json = Zeroizing::new(decode_vault_blob(blob, &key)?);
-    Ok((json, key, engine))
+    let json = Zeroizing::new(decode_vault_blob(blob, engine.derived_key())?);
+    Ok((json, engine))
 }
 
 #[cfg(test)]
