@@ -6,7 +6,7 @@ use slint::{Model, ModelRc, SharedString, StandardListViewItem, VecModel, Weak, 
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 use crate::database::manager::DatabaseManager;
 use crate::session::session::Session;
 use crate::sync::config::SyncConfig;
@@ -513,11 +513,9 @@ fn apply_conflict_choice(
     let Some(ui) = ui_weak.upgrade() else {
         return;
     };
-    let Some(bytes) = remote.lock().unwrap().take() else {
-        ui.set_sync_show_conflict(false);
-        update_sync_status(ui_weak, engine, session_state);
-        return;
-    };
+    // Lock the session first; only then take the remote bytes, so they
+    // are never dropped without being resolved (D4: nothing is lost
+    // silently).
     let Ok(guard) = session_state.try_lock() else {
         ui.set_sync_show_conflict(false);
         return;
@@ -525,6 +523,18 @@ fn apply_conflict_choice(
     let Some(session) = guard.as_ref() else {
         ui.set_sync_show_conflict(false);
         return;
+    };
+    let bytes = match remote
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+    {
+        Some(b) => b,
+        None => {
+            ui.set_sync_show_conflict(false);
+            update_sync_status(ui_weak, engine, session_state);
+            return;
+        }
     };
     if let Err(e) = engine.resolve_conflict(session, choice, &bytes) {
         ui.set_sync_status_detail(SharedString::from(format!("Conflict resolution failed: {e}")));
@@ -628,7 +638,7 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                 if let Some(ui) = ui_weak.upgrade() {
                     ui.set_auth_error(false);
                     ui.set_current_page(Page::Passlock);
-                    refresh_table_data(&ui_weak, session_state.lock().unwrap().as_ref().unwrap());
+                    refresh_table_data(&ui_weak, session_state.lock().unwrap_or_else(|e| e.into_inner()).as_ref().unwrap());
                 }
             }
         } else {
@@ -816,7 +826,9 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                 update_sync_status(&ui_w, &engine, &state);
             }
             restore::SyncComparison::Diverged { remote_bytes, remote_newer, .. } => {
-                *remote.lock().unwrap() = Some(remote_bytes);
+                *remote
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(remote_bytes);
                 if let Some(ui) = ui_w.upgrade() {
                     ui.set_sync_show_conflict(true);
                     ui.set_sync_conflict_detail(SharedString::from(if remote_newer {
@@ -883,15 +895,21 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
             return;
         }
         let folder_path = std::path::PathBuf::from(folder);
-        match restore::restore_from_folder_with_password(&folder_path, &password, &manager_for_restore) {
+        // The password lives in a Zeroizing buffer for the duration of
+        // the restore and is wiped when the closure body ends.
+        let pw_bytes = Zeroizing::new(password.as_bytes().to_vec());
+        let pw: &str = std::str::from_utf8(&pw_bytes).unwrap_or("");
+        match restore::restore_from_folder_with_password(&folder_path, pw, &manager_for_restore) {
             Ok(rv) => {
                 let session = Session::new(rv.master_key.to_vec(), rv.engine, manager_for_restore.clone());
-                *state.lock().unwrap() = Some(session);
+                *state
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(session);
                 if let Some(ui) = ui_w.upgrade() {
                     ui.set_sync_status_detail(SharedString::from("Vault restored."));
                     ui.set_current_page(Page::Passlock);
                 }
-                refresh_table_data(&ui_w, state.lock().unwrap().as_ref().unwrap());
+                refresh_table_data(&ui_w, state.lock().unwrap_or_else(|e| e.into_inner()).as_ref().unwrap());
             }
             Err(e) => {
                 if let Some(ui) = ui_w.upgrade() {

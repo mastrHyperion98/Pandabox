@@ -123,7 +123,9 @@ export component SyncView inherits Rectangle {
                     text: "Restore vault…";
                     clicked => {
                         root.restore-folder = restore-folder-input.text;
-                        root.restore_vault(restore-pw.text);
+                        let pw = restore-pw.text;
+                        root.restore_vault(pw);
+                        restore-pw.text = "";
                     }
                 }
             }
