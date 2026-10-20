@@ -6,6 +6,7 @@
 
 use crate::database::manager::DatabaseManager;
 use crate::database::models::{NewMasterRecord, Record};
+use crate::sync::blob;
 use crate::sync::vault_export::{VaultExport, VAULT_MAGIC, VAULT_VERSION};
 use base64::Engine;
 
@@ -15,6 +16,7 @@ pub enum VaultImportError {
     InvalidMagic,
     UnsupportedVersion(u8),
     Base64(String),
+    Crypto,
     Database(String),
 }
 
@@ -25,6 +27,7 @@ impl std::fmt::Display for VaultImportError {
             Self::InvalidMagic => write!(f, "Vault file has the wrong magic"),
             Self::UnsupportedVersion(v) => write!(f, "Unsupported vault version {v}"),
             Self::Base64(detail) => write!(f, "Vault file has invalid encoding: {detail}"),
+            Self::Crypto => write!(f, "Vault file could not be decrypted"),
             Self::Database(detail) => write!(f, "Import failed: {detail}"),
         }
     }
@@ -84,6 +87,20 @@ pub fn import_vault(
         .replace_vault(&master, &records)
         .map_err(|e| VaultImportError::Database(e.to_string()))?;
     Ok(vault)
+}
+
+/// Decrypt a sealed vault blob with the candidate key and import it.
+///
+/// This is the path that reaches `replace_vault` in production: the
+/// AEAD authentication check runs first, so a wrong key or a tampered
+/// blob fails before anything touches the database.
+pub fn import_blob(
+    blob_bytes: &[u8],
+    key: &[u8],
+    manager: &DatabaseManager,
+) -> Result<VaultExport, VaultImportError> {
+    let json = blob::decode_vault_blob(blob_bytes, key).map_err(|_| VaultImportError::Crypto)?;
+    import_vault(&json, manager)
 }
 
 #[cfg(test)]
@@ -158,6 +175,47 @@ mod tests {
             1,
             "unknown fields must be rejected before any DB write"
         );
+    }
+
+    #[test]
+    fn import_blob_round_trip_and_wrong_key_protects_db() {
+        use crate::sync::blob::{decode_vault_blob, encode_vault_blob};
+        use rand::RngCore;
+
+        let source = TempDb::new();
+        source.seed(2);
+        let vault = export_vault(&source.manager).expect("export");
+        let json = canonical_bytes(&vault);
+
+        let mut key = vec![0u8; 32];
+        rand::rng().fill_bytes(&mut key);
+        let blob = encode_vault_blob(&json, &key).expect("encode");
+
+        // Correct key: import succeeds, vault content matches.
+        let target = TempDb::new();
+        target.seed(1);
+        import_blob(&blob, &key, &target.manager).expect("import blob");
+        assert_eq!(
+            target.manager.get_all_records().expect("records"),
+            source.manager.get_all_records().expect("records")
+        );
+
+        // Wrong key: AEAD check fails, DB untouched.
+        let mut other = vec![0u8; 32];
+        rand::rng().fill_bytes(&mut other);
+        let target2 = TempDb::new();
+        target2.seed(3);
+        let err = import_blob(&blob, &other, &target2.manager).unwrap_err();
+        assert!(matches!(err, VaultImportError::Crypto));
+        assert_eq!(
+            target2.manager.get_all_records().expect("records").len(),
+            3,
+            "wrong key must not reach replace_vault"
+        );
+
+        // The decoded JSON is what import_vault consumes.
+        let decoded = decode_vault_blob(&blob, &key).expect("decode");
+        assert_eq!(decoded, json);
     }
 
     #[test]

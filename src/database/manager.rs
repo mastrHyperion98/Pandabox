@@ -189,6 +189,10 @@ impl DatabaseManager {
     }
 
     /// Replace the entire vault — master record and all records — atomically.
+    ///
+    /// Safety: only feed this data that was authenticated with the
+    /// user's master key (see `sync::vault_import::import_blob`); the
+    /// AEAD check must happen before this is reached.
     pub fn replace_vault(
         &self,
         master: &NewMasterRecord,

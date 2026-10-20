@@ -6,12 +6,17 @@
 //! ciphertext. Sealing uses a fresh random nonce on every call.
 
 use crate::encrypt::cryptography::CryptEngine;
+use zeroize::Zeroizing;
 
 /// Crypto failures (auth failure on a wrong key, malformed blob,
 /// wrong key length). Display carries no sensitive detail.
 pub type BlobError = chacha20poly1305::Error;
 
 /// Seal `plaintext` (canonical vault JSON) with a 256-bit key.
+///
+/// The caller owns the key and must keep it in a `Zeroizing` buffer
+/// (the session key is zeroized on lock); a borrowed slice cannot be
+/// zeroized by this function.
 pub fn encode_vault_blob(plaintext: &[u8], key: &[u8]) -> Result<Vec<u8>, BlobError> {
     CryptEngine::seal(plaintext, key)
 }
@@ -27,10 +32,10 @@ mod tests {
     use super::*;
     use rand::RngCore;
 
-    fn random_key() -> Vec<u8> {
+    fn random_key() -> Zeroizing<Vec<u8>> {
         let mut key = vec![0u8; 32];
         rand::rng().fill_bytes(&mut key);
-        key
+        Zeroizing::new(key)
     }
 
     #[test]

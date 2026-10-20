@@ -83,15 +83,22 @@ impl CryptEngine {
     }
 
     pub fn encrypt_record(&self, record: &[u8], master_key: Vec<u8>) -> Result<Vec<u8>, ChaChaError> {
-        Self::seal(record, &master_key)
+        // The key arrives by value; zeroize it before it is dropped.
+        let key = zeroize::Zeroizing::new(master_key);
+        Self::seal(record, &key)
     }
 
     pub fn decrypt_record(&self, data: &[u8], master_key: Vec<u8>) -> Result<Vec<u8>, ChaChaError> {
-        Self::open(data, &master_key)
+        // The key arrives by value; zeroize it before it is dropped.
+        let key = zeroize::Zeroizing::new(master_key);
+        Self::open(data, &key)
     }
 
     /// Seal `data` with a raw 256-bit key, returning `nonce || ciphertext+tag`.
     /// A fresh random nonce is generated on every call.
+    ///
+    /// The caller owns the key buffer and its zeroization; this function
+    /// cannot zeroize a borrowed slice.
     pub fn seal(data: &[u8], key: &[u8]) -> Result<Vec<u8>, ChaChaError> {
         if key.len() != 32 {
             return Err(ChaChaError);
