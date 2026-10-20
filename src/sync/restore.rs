@@ -68,17 +68,19 @@ pub fn restore_from_folder_with_password(
     // The vault's master key decrypts with the derived key; this second
     // authentication check validates the password against the vault's
     // own master record.
-    let master_key = engine
-        .decrypt_master_key(
-            &base64::engine::general_purpose::STANDARD.decode(&vault.master.nonce)
-                .map_err(|e| RestoreError::Import(VaultImportError::Base64(e.to_string())))?,
-            &base64::engine::general_purpose::STANDARD.decode(&vault.master.encrypted_master_key)
-                .map_err(|e| RestoreError::Import(VaultImportError::Base64(e.to_string())))?,
-        )
-        .map_err(|_| RestoreError::Decoding)?;
+    let master_key = Zeroizing::new(
+        engine
+            .decrypt_master_key(
+                &base64::engine::general_purpose::STANDARD.decode(&vault.master.nonce)
+                    .map_err(|e| RestoreError::Import(VaultImportError::Base64(e.to_string())))?,
+                &base64::engine::general_purpose::STANDARD.decode(&vault.master.encrypted_master_key)
+                    .map_err(|e| RestoreError::Import(VaultImportError::Base64(e.to_string())))?,
+            )
+            .map_err(|_| RestoreError::Decoding)?,
+    );
     import_blob(&bytes, engine.derived_key(), manager).map_err(RestoreError::Import)?;
     Ok(RestoredVault {
-        master_key: Zeroizing::new(master_key),
+        master_key,
         engine,
     })
 }

@@ -216,7 +216,7 @@ mod tests {
 
         // The decoded JSON is what import_vault consumes.
         let decoded = decode_vault_blob(&blob, &key).expect("decode");
-        assert_eq!(decoded, json);
+        assert_eq!(decoded.as_slice(), json.as_slice());
     }
 
     #[test]

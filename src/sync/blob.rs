@@ -37,11 +37,16 @@ pub fn encode_vault_blob(
 
 /// Open a blob produced by `encode_vault_blob` with the key.
 /// Wrong key or tampered data ⇒ error (Poly1305 tag authenticates both).
-pub fn decode_vault_blob(blob: &[u8], key: &[u8]) -> Result<Vec<u8>, BlobError> {
+/// The plaintext JSON is returned in a `Zeroizing` buffer so callers
+/// get wipe-on-drop for free.
+pub fn decode_vault_blob(
+    blob: &[u8],
+    key: &[u8],
+) -> Result<Zeroizing<Vec<u8>>, BlobError> {
     if blob.len() < 12 + 16 + SALT_LENGTH {
         return Err(chacha20poly1305::Error);
     }
-    CryptEngine::open(&blob[..blob.len() - SALT_LENGTH], key)
+    Ok(Zeroizing::new(CryptEngine::open(&blob[..blob.len() - SALT_LENGTH], key)?))
 }
 
 /// Open a blob on a machine with no local vault state: the master
@@ -58,7 +63,7 @@ pub fn open_blob_with_password(
     }
     let salt = &blob[blob.len() - SALT_LENGTH..];
     let engine = CryptEngine::new(password, salt).map_err(|_| chacha20poly1305::Error)?;
-    let json = Zeroizing::new(decode_vault_blob(blob, engine.derived_key())?);
+    let json = decode_vault_blob(blob, engine.derived_key())?;
     Ok((json, engine))
 }
 
@@ -83,8 +88,7 @@ mod tests {
         assert_eq!(blob.len(), 12 + plaintext.len() + 16 + 32, "nonce + json+tag + salt");
         assert_eq!(&blob[blob.len() - 32..], &salt, "salt is the public suffix");
         let back = decode_vault_blob(&blob, &key).expect("decode");
-        assert_eq!(back.as_slice(), plaintext);
-    }
+        assert_eq!(back.as_slice(), plaintext);    }
 
     #[test]
     fn wrong_key_fails_auth() {
@@ -104,8 +108,8 @@ mod tests {
         let b = encode_vault_blob(b"same", &key, &[0u8; 32]).expect("encode b");
         assert_ne!(a, b, "nonces must never be reused with the same key");
         assert_eq!(
-            decode_vault_blob(&a, &key).expect("decode a"),
-            decode_vault_blob(&b, &key).expect("decode b")
+            decode_vault_blob(&a, &key).expect("decode a").as_slice(),
+            decode_vault_blob(&b, &key).expect("decode b").as_slice()
         );
     }
 
