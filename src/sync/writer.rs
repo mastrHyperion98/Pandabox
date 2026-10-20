@@ -32,8 +32,9 @@ impl std::error::Error for SyncError {}
 /// Export the vault from `session`, seal it with the session master
 /// key, and atomically write `pandabox.pbx` into `folder`.
 ///
-/// Key lifetime: `session` owns the master key; this function only
-/// borrows it, as required by `CryptEngine::seal`'s contract.
+/// Key lifetime: `session` owns the master key in a `Zeroizing`
+/// buffer (wiped when the session drops); this function only borrows
+/// it, as required by `CryptEngine::seal`'s contract.
 pub fn write_vault_blob(folder: &Path, session: &Session) -> Result<PathBuf, SyncError> {
     let vault = vault_export::export_vault(session.database_manager())
         .map_err(|e| SyncError::Export(e.to_string()))?;

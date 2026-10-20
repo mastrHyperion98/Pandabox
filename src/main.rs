@@ -703,9 +703,11 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
 
     ui.run().unwrap();
 
-    // Cloud sync (docs/cloud-sync D3): flush any pending change on clean exit.
-    if let Some(session) = session_state.lock().unwrap().as_ref() {
-        if let Err(e) = sync_engine.flush(session) {
+    // Cloud sync (docs/cloud-sync D3): flush any pending change on clean
+    // exit, then take the session out of the shared state so its
+    // Zeroizing key buffer is wiped on drop.
+    if let Some(session) = session_state.lock().unwrap().take() {
+        if let Err(e) = sync_engine.flush(&session) {
             error!("Final sync flush failed: {}", e);
         }
     }
