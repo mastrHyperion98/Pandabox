@@ -38,14 +38,13 @@ impl std::error::Error for SyncError {}
 /// it, as required by `CryptEngine::seal`'s contract.
 pub fn write_vault_blob(folder: &Path, session: &Session) -> Result<PathBuf, SyncError> {
     // The export and its canonical JSON are plaintext (service names,
-    // emails, usernames, notes); keep them in Zeroizing buffers so they
-    // are wiped when the function returns.
-    let vault = Zeroizing::new(
-        vault_export::export_vault(session.database_manager())
-            .map_err(|e| SyncError::Export(e.to_string()))?,
-    );
+    // emails, usernames, notes): the JSON is kept in a Zeroizing buffer
+    // and the export's fields are wiped explicitly once sealed.
+    let mut vault = vault_export::export_vault(session.database_manager())
+        .map_err(|e| SyncError::Export(e.to_string()))?;
     let json = Zeroizing::new(vault_export::canonical_bytes(&vault));
     let blob = blob::encode_vault_blob(&json, session.master_key()).map_err(|_| SyncError::Crypto)?;
+    vault_export::zeroize_vault(&mut vault);
 
     let target = folder.join(BLOB_FILE_NAME);
     let tmp = folder.join(BLOB_TMP_FILE_NAME);

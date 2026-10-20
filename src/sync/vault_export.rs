@@ -84,6 +84,24 @@ pub fn canonical_bytes(vault: &VaultExport) -> Vec<u8> {
     serde_json::to_vec(vault).expect("a serializable vault cannot fail to serialize")
 }
 
+/// Wipe the plaintext fields of `vault` in place (service names,
+/// emails, usernames, notes, master-record encodings). Call this after
+/// the data has been consumed (serialized / sealed).
+pub fn zeroize_vault(vault: &mut VaultExport) {
+    vault.magic.as_mut_bytes().fill(0);
+    vault.exported_at.as_mut_bytes().fill(0);
+    vault.master.encrypted_master_key.as_mut_bytes().fill(0);
+    vault.master.nonce.as_mut_bytes().fill(0);
+    vault.master.salt.as_mut_bytes().fill(0);
+    for r in vault.records.iter_mut() {
+        r.service.as_mut_bytes().fill(0);
+        r.email.as_mut_bytes().fill(0);
+        r.username.as_mut_bytes().fill(0);
+        r.password.as_mut_bytes().fill(0);
+        r.notes.as_mut_bytes().fill(0);
+    }
+}
+
 /// BLAKE2s-256 fingerprint used for sync conflict detection (DESIGN D4).
 /// Computed over the canonical JSON *without* `exported_at`, so two
 /// exports of identical vault state produce the same fingerprint.
