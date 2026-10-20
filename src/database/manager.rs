@@ -31,10 +31,18 @@ impl DatabaseManager {
         let app_dir = home_dir.join("Pandabox");
         fs::create_dir_all(&app_dir).expect("Failed to create application directory");
         
-        // Set the database path
-        let db_path = app_dir.join("pandabox.db");
+        Self::with_path(app_dir.join("pandabox.db"))
+    }
+
+    /// Connect to a database at an explicit path, creating parent directories
+    /// and running pending migrations. Used by tests and (later) sync restore.
+    pub fn with_path(db_path: PathBuf) -> Self {
+        if let Some(parent) = db_path.parent() {
+            fs::create_dir_all(parent).expect("Failed to create application directory");
+        }
+
         let database_url = db_path.to_str().expect("Invalid database path").to_string();
-        
+
         // Set the DATABASE_URL environment variable for Diesel CLI
         // SAFETY: This is safe because we're setting it before any other threads are spawned
         // and it's only used for database connection initialization
@@ -178,5 +186,26 @@ impl DatabaseManager {
                 notes.eq(notes_str),
             ))
             .execute(&mut connection)
+    }
+
+    /// Replace the entire vault — master record and all records — atomically.
+    pub fn replace_vault(
+        &self,
+        master: &NewMasterRecord,
+        vault_records: &[Record],
+    ) -> QueryResult<()> {
+        use crate::database::schema::master_table::dsl::master_table;
+        use crate::database::schema::records::dsl::*;
+
+        let mut connection = self.establish_connection();
+        connection.transaction(|txn| {
+            diesel::delete(master_table).execute(txn)?;
+            diesel::insert_into(master_table).values(master).execute(txn)?;
+            diesel::delete(records).execute(txn)?;
+            for record in vault_records {
+                diesel::insert_into(records).values(record).execute(txn)?;
+            }
+            Ok(())
+        })
     }
 }

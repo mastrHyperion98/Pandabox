@@ -39,8 +39,9 @@ Decryption: `CryptEngine::decrypt_record` with the candidate master key; the Pol
 ```
 
 Field rules:
-- Field names mirror `schema.rs` column names exactly; base64 is used for binary columns (`encrypted_master_key`, `nonce`, `salt`) and for `password` only if `records` stores it already-encoded (match current storage — verify in CS-1.1 and record the outcome here).
-- `records` is **sorted by `id`** so the JSON is byte-canonical; the content hash (D4) is computed over these exact bytes.
+- Field names mirror `schema.rs` column names exactly; base64 is used for the binary columns of `master_table` (`encrypted_master_key`, `nonce`, `salt`).
+- `records.password` is stored in the DB as `base64(nonce || ciphertext)` (encrypted per record, CS-1.1 verified); the JSON carries that stored string verbatim. `service`, `email`, `username`, `notes` are stored as text and pass through unchanged.
+- `records` is **sorted by `id`** so the JSON is byte-canonical; the content hash (D4) is BLAKE2s-256 over the canonical JSON **with `exported_at` excluded** (so two exports of identical state hash equal).
 - No keys beyond those listed. Unknown keys on import ⇒ reject (forward-compat safety), with the error surfaced per D5.
 
 ### Conflict copies

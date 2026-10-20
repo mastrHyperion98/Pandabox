@@ -83,30 +83,40 @@ impl CryptEngine {
     }
 
     pub fn encrypt_record(&self, record: &[u8], master_key: Vec<u8>) -> Result<Vec<u8>, ChaChaError> {
-        let key = Key::from_slice(master_key.as_slice());
+        Self::seal(record, &master_key)
+    }
+
+    pub fn decrypt_record(&self, data: &[u8], master_key: Vec<u8>) -> Result<Vec<u8>, ChaChaError> {
+        Self::open(data, &master_key)
+    }
+
+    /// Seal `data` with a raw 256-bit key, returning `nonce || ciphertext+tag`.
+    /// A fresh random nonce is generated on every call.
+    pub fn seal(data: &[u8], key: &[u8]) -> Result<Vec<u8>, ChaChaError> {
+        if key.len() != 32 {
+            return Err(ChaChaError);
+        }
         let nonce = Self::generate_nonce();
-        let cipher = ChaCha20Poly1305::new(key);
-        let ciphertext = cipher.encrypt(&nonce, record.as_ref())?;
-        
-        // Prepend nonce to ciphertext so we can decrypt later
+        let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
+        let ciphertext = cipher.encrypt(&nonce, data)?;
+
         let mut result = nonce.to_vec();
         result.extend_from_slice(&ciphertext);
         Ok(result)
     }
 
-    pub fn decrypt_record(&self, data: &[u8], master_key: Vec<u8>) -> Result<Vec<u8>, ChaChaError> {
-        let key = Key::from_slice(master_key.as_slice());
-        let cipher = ChaCha20Poly1305::new(key);
-        
-        // Extract nonce from the data (first 12 bytes)
+    /// Open data produced by `seal` with a raw 256-bit key.
+    /// Authentication failure (wrong key or tampered data) is an error.
+    pub fn open(data: &[u8], key: &[u8]) -> Result<Vec<u8>, ChaChaError> {
+        if key.len() != 32 {
+            return Err(ChaChaError);
+        }
         if data.len() < 12 {
             return Err(ChaChaError);
         }
-        
         let nonce = Nonce::from_slice(&data[..12]);
-        let ciphertext = &data[12..];
-        
-        let plaintext = cipher.decrypt(nonce, ciphertext)?;
+        let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
+        let plaintext = cipher.decrypt(nonce, &data[12..])?;
         Ok(plaintext)
     }
 

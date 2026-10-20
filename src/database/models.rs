@@ -2,7 +2,7 @@ use diesel::prelude::*;
 use crate::database::schema::{master_table, records};
 
 /// Represents a record in the database.
-#[derive(Queryable, Selectable)]
+#[derive(Queryable, Selectable, Insertable, Debug, PartialEq, Eq)]
 #[diesel(table_name = records)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct Record {

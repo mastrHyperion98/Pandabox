@@ -35,13 +35,13 @@ Produce and consume the `pandabox.pbx` blob with zero UI: canonical vault JSON (
 - [ ] Round-trip test: encode → decode with same key yields identical JSON bytes; wrong key fails with auth error (Poly1305 tag), never returns garbage.
 - [ ] Two encodes of identical JSON differ (fresh nonce) yet both decode.
 - [ ] Nonce-reuse guard: no code path can pass a fixed nonce (review + test asserting random nonces differ).
-- [ ] `cargo clippy` clean; no new dependencies added to `Cargo.toml`.
+- [ ] `cargo clippy` clean; no new crates added to `Cargo.lock` (serde_json, blake2, chrono are already in the dependency tree).
 
 ### Task CS-1.3 — Import application
 
 **Do:**
 - `vault_import.rs`: `import_vault(json: &[u8], &DatabaseManager)` — replace `master_table` row and `records` rows (delete-all + reinsert preserving ids) inside one transaction; validate version/keys before touching the DB.
-- Expose a pure `vault_fingerprint(json: &[u8]) -> [u8; 32]` (SHA-256 or BLAKE3 per existing deps; pick one already in Cargo.lock) for later hash comparison (D4).
+- Expose a pure `vault_fingerprint(json: &[u8]) -> [u8; 32]` (BLAKE2s-256 via `blake2`, already in the dependency tree) for later hash comparison (D4).
 
 **Acceptance:**
 - [ ] Import test: export from DB-A file, import into a freshly created DB-B file, `get_all_records` equal on both.

@@ -20,6 +20,10 @@ use log::{error, warn, info};
 mod database;
 mod encrypt;
 mod session;
+// Wired up in CS-2 (writer) and CS-4 (UI); allow for now so the
+// binary build stays warning-free while CS-1 ships.
+#[allow(dead_code)]
+mod sync;
 
 slint::include_modules!();
 
