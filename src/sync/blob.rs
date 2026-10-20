@@ -6,7 +6,6 @@
 //! ciphertext. Sealing uses a fresh random nonce on every call.
 
 use crate::encrypt::cryptography::CryptEngine;
-use zeroize::Zeroizing;
 
 /// Crypto failures (auth failure on a wrong key, malformed blob,
 /// wrong key length). Display carries no sensitive detail.
@@ -30,6 +29,7 @@ pub fn decode_vault_blob(blob: &[u8], key: &[u8]) -> Result<Vec<u8>, BlobError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zeroize::Zeroizing;
     use rand::RngCore;
 
     fn random_key() -> Zeroizing<Vec<u8>> {

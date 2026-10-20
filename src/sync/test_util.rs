@@ -2,13 +2,14 @@
 //! temp directories, so parallel tests never share a `HOME`-based DB.
 
 use crate::database::manager::DatabaseManager;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub struct TempDb {
     pub dir: std::path::PathBuf,
-    pub manager: DatabaseManager,
+    pub manager: Rc<DatabaseManager>,
 }
 
 impl TempDb {
@@ -19,7 +20,7 @@ impl TempDb {
             std::process::id(),
             n
         ));
-        let manager = DatabaseManager::with_path(dir.join("vault.db"));
+        let manager = Rc::new(DatabaseManager::with_path(dir.join("vault.db")));
         Self { dir, manager }
     }
 

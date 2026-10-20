@@ -193,6 +193,7 @@ impl DatabaseManager {
     /// Safety: only feed this data that was authenticated with the
     /// user's master key (see `sync::vault_import::import_blob`); the
     /// AEAD check must happen before this is reached.
+    #[allow(dead_code)] // used by CS-3 restore path
     pub fn replace_vault(
         &self,
         master: &NewMasterRecord,

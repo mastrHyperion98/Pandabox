@@ -1,0 +1,58 @@
+//! Sync writer (docs/cloud-sync DESIGN D0/D3).
+//!
+//! Exports the local vault, seals it with the session master key, and
+//! writes it atomically (temp file + rename) into the sync folder.
+//! Failures are reported, never propagated into vault operation.
+
+use crate::session::session::Session;
+use crate::sync::blob;
+use crate::sync::vault_export;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+pub enum SyncError {
+    Export(String),
+    Crypto,
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for SyncError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Export(detail) => write!(f, "Vault export failed: {detail}"),
+            Self::Crypto => write!(f, "Vault encryption failed"),
+            Self::Io(e) => write!(f, "Sync write failed: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for SyncError {}
+
+/// Export the vault from `session`, seal it with the session master
+/// key, and atomically write `pandabox.pbx` into `folder`.
+///
+/// Key lifetime: `session` owns the master key; this function only
+/// borrows it, as required by `CryptEngine::seal`'s contract.
+pub fn write_vault_blob(folder: &Path, session: &Session) -> Result<PathBuf, SyncError> {
+    let vault = vault_export::export_vault(session.database_manager())
+        .map_err(|e| SyncError::Export(e.to_string()))?;
+    let json = vault_export::canonical_bytes(&vault);
+    let blob = blob::encode_vault_blob(&json, session.master_key()).map_err(|_| SyncError::Crypto)?;
+
+    let target = folder.join(BLOB_FILE_NAME);
+    let tmp = folder.join(BLOB_TMP_FILE_NAME);
+    let write_result = (|| -> std::io::Result<()> {
+        fs::write(&tmp, blob)?;
+        fs::rename(&tmp, &target)
+    })();
+    if let Err(e) = write_result {
+        // Never leave a half-written temp file behind.
+        let _ = fs::remove_file(&tmp);
+        return Err(SyncError::Io(e));
+    }
+    Ok(target)
+}
+
+pub const BLOB_FILE_NAME: &str = "pandabox.pbx";
+pub const BLOB_TMP_FILE_NAME: &str = "pandabox.pbx.tmp";

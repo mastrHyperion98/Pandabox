@@ -13,7 +13,10 @@ pub struct Session {
     key: Vec<u8>,
     // crypto engine
     crypto_engine: CryptEngine,
-    database_manager: Rc<DatabaseManager>
+    database_manager: Rc<DatabaseManager>,
+    // Optional callback invoked after every successful vault mutation
+    // (cloud sync arming; docs/cloud-sync DESIGN D3).
+    on_vault_changed: Option<Rc<dyn Fn() + 'static>>,
 }
 
 impl Session {
@@ -22,12 +25,33 @@ impl Session {
             is_active: true,
             key: key,
             crypto_engine: crypto_engine,
-            database_manager: db_manager
+            database_manager: db_manager,
+            on_vault_changed: None,
+        }
+    }
+
+    pub fn set_on_vault_changed(&mut self, hook: Rc<dyn Fn() + 'static>) {
+        self.on_vault_changed = Some(hook);
+    }
+
+    fn fire_on_vault_changed(&self) {
+        if let Some(hook) = &self.on_vault_changed {
+            hook();
         }
     }
 
     fn get_key(&self) -> &Vec<u8> {
         &self.key
+    }
+
+    /// The 256-bit session (master) key. Owned by this session; callers
+    /// borrow it read-only (per `CryptEngine::seal`'s zeroization contract).
+    pub fn master_key(&self) -> &[u8] {
+        &self.key
+    }
+
+    pub fn database_manager(&self) -> &Rc<DatabaseManager> {
+        &self.database_manager
     }
     
     /// Get all records from the database
@@ -50,13 +74,15 @@ impl Session {
             }
         };    
         
-        self.database_manager.insert_entry(
+        let record = self.database_manager.insert_entry(
             service.as_str(),
             email.as_str(),
             username.as_str(),
             encrypted_password.as_str(),
             notes.as_str(),
-        )
+        )?;
+        self.fire_on_vault_changed();
+        Ok(record)
     }
 
     pub fn update_entry(&self, record_id: i32, service: &SharedString, email: &SharedString, username: &SharedString, password: &SharedString, notes: &SharedString) -> bool
@@ -77,7 +103,10 @@ impl Session {
             encrypted_password.as_str(),
             notes.as_str(),
         ) {
-            Ok(_) => true,
+            Ok(_) => {
+                self.fire_on_vault_changed();
+                true
+            }
             Err(e) => {
                 error!("Failed to update entry: {}", e);
                 false
@@ -90,7 +119,10 @@ impl Session {
         match self.database_manager.delete_entry(
             record_id
         ) {
-            Ok(_) => true,
+            Ok(_) => {
+                self.fire_on_vault_changed();
+                true
+            }
             Err(e) => {
                 error!("Failed to delete entry: {}", e);
                 false

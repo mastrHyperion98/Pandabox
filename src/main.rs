@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use zeroize::Zeroize;
 use crate::database::manager::DatabaseManager;
 use crate::session::session::Session;
+use crate::sync::SyncEngine;
 use arboard::Clipboard;
 use std::fs::File;
 use std::io::BufReader;
@@ -20,8 +21,8 @@ use log::{error, warn, info};
 mod database;
 mod encrypt;
 mod session;
-// Wired up in CS-2 (writer) and CS-4 (UI); allow for now so the
-// binary build stays warning-free while CS-1 ships.
+// Several items are consumed by CS-3 (restore) and CS-4 (UI);
+// keep the binary build warning-free until then.
 #[allow(dead_code)]
 mod sync;
 
@@ -550,13 +551,25 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
     let session_state = Arc::new(Mutex::new(None::<Session>));
     let session_state_for_auth = Arc::clone(&session_state);
     let ui_weak_for_auth = ui_weak.clone();
-    
+
+    // Cloud sync (docs/cloud-sync CS-2): debounced writer, off by default.
+    let sync_engine = Rc::new(SyncEngine::new());
+    let sync_engine_for_auth = sync_engine.clone();
+    let session_state_for_sync = Arc::clone(&session_state);
+
     ui.on_authenticate_submitted(move |input| {
         let ui_weak = ui_weak_for_auth.clone();
         let session_state = session_state_for_auth.clone();
         let (state, session) = authenticate_submitted(input, manager.clone());
         if state {
-            if let Some(session) = session {
+            if let Some(mut session) = session {
+                // Arm cloud sync after every vault mutation (docs/cloud-sync D3).
+                let engine = sync_engine_for_auth.clone();
+                let state = session_state_for_sync.clone();
+                session.set_on_vault_changed(Rc::new(move || {
+                    engine.arm_with_timer(&state);
+                }));
+
                 // Update the session state
                 *session_state.lock().unwrap() = Some(session);
                 
@@ -689,6 +702,13 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
     });
 
     ui.run().unwrap();
+
+    // Cloud sync (docs/cloud-sync D3): flush any pending change on clean exit.
+    if let Some(session) = session_state.lock().unwrap().as_ref() {
+        if let Err(e) = sync_engine.flush(session) {
+            error!("Final sync flush failed: {}", e);
+        }
+    }
 
     Ok(())
 }
