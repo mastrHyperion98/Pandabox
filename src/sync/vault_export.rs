@@ -9,6 +9,7 @@ use crate::database::manager::DatabaseManager;
 use base64::Engine;
 use blake2::Digest;
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 pub const VAULT_MAGIC: &str = "PBXS";
 pub const VAULT_VERSION: u8 = 1;
@@ -82,6 +83,24 @@ pub fn export_vault(manager: &DatabaseManager) -> Result<VaultExport, diesel::re
 /// (includes `exported_at`; exclude it when comparing states).
 pub fn canonical_bytes(vault: &VaultExport) -> Vec<u8> {
     serde_json::to_vec(vault).expect("a serializable vault cannot fail to serialize")
+}
+
+/// Wipe the plaintext fields of `vault` in place (service names,
+/// emails, usernames, notes, master-record encodings). Call this after
+/// the data has been consumed (serialized / sealed).
+pub fn zeroize_vault(vault: &mut VaultExport) {
+    vault.magic.zeroize();
+    vault.exported_at.zeroize();
+    vault.master.encrypted_master_key.zeroize();
+    vault.master.nonce.zeroize();
+    vault.master.salt.zeroize();
+    for r in vault.records.iter_mut() {
+        r.service.zeroize();
+        r.email.zeroize();
+        r.username.zeroize();
+        r.password.zeroize();
+        r.notes.zeroize();
+    }
 }
 
 /// BLAKE2s-256 fingerprint used for sync conflict detection (DESIGN D4).
