@@ -9,7 +9,7 @@ use crate::sync::blob;
 use crate::sync::vault_export;
 use std::fs;
 use std::path::{Path, PathBuf};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 #[derive(Debug)]
 pub enum SyncError {
@@ -42,7 +42,7 @@ pub fn write_vault_blob(folder: &Path, session: &Session) -> Result<PathBuf, Syn
     // and the export's fields are wiped explicitly once sealed.
     let mut vault = vault_export::export_vault(session.database_manager())
         .map_err(|e| SyncError::Export(e.to_string()))?;
-    let json = Zeroizing::new(vault_export::canonical_bytes(&vault));
+    let mut json = Zeroizing::new(vault_export::canonical_bytes(&vault));
     let blob = match blob::encode_vault_blob(&json, session.master_key()) {
         Ok(b) => b,
         // Wipe the plaintext export before returning on failure too.
@@ -51,6 +51,8 @@ pub fn write_vault_blob(folder: &Path, session: &Session) -> Result<PathBuf, Syn
             return Err(SyncError::Crypto);
         }
     };
+    // Plaintext is wiped before it crosses the fs::write below.
+    json.zeroize();
     vault_export::zeroize_vault(&mut vault);
 
     let target = folder.join(BLOB_FILE_NAME);
