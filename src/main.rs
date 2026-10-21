@@ -859,9 +859,18 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                 }
             }
             other => {
+                let mut flushed = false;
                 let detail = match other {
                     restore::SyncComparison::NoFile => {
-                        "No pandabox.pbx file in the sync folder yet.".to_owned()
+                        // No blob yet: "Sync now" writes the first one.
+                        engine.mark_dirty();
+                        match engine.flush(session) {
+                            Ok(()) => {
+                                flushed = true;
+                                "Vault written to the sync folder.".to_owned()
+                            }
+                            Err(e) => format!("Sync failed: {e}"),
+                        }
                     }
                     restore::SyncComparison::Undecodable => {
                         "The synced file could not be read with this vault's key.".to_owned()
@@ -873,6 +882,9 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                     if !detail.is_empty() {
                         ui.set_sync_status_detail(SharedString::from(detail));
                     }
+                }
+                if flushed {
+                    update_sync_status(&ui_w, &engine, &state);
                 }
             }
         }
