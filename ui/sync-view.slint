@@ -23,14 +23,19 @@ export component SyncView inherits Rectangle {
 
     background: Palette.background;
 
+    // Fills the window; the content column below is centered both
+    // vertically (outer VerticalLayout) and horizontally (HorizontalLayout)
+    // and scales with the window up to a 760px reading width.
     VerticalLayout {
         padding: 24px;
-        spacing: 16px;
         alignment: center;
 
-        VerticalLayout {
-            width: 640px;
-            spacing: 12px;
+        HorizontalLayout {
+            alignment: center;
+
+            content := VerticalLayout {
+                width: min(root.width - 48px, 760px);
+                spacing: 12px;
 
             Text {
                 text: "Cloud Sync";
@@ -138,6 +143,7 @@ export component SyncView inherits Rectangle {
                     clicked => { root.sync_back(); }
                 }
             }
+        }
         }
     }
 
