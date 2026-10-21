@@ -20,10 +20,10 @@ The visible surface: a `Page::Sync` settings page with opt-in toggle, folder pic
 - Conflict prompt as a modal in `sync-view.slint` (three labeled buttons, no free-text).
 
 **Acceptance:**
-- [ ] Toggle on + valid folder ⇒ config file shows `enabled: true`; first change produces a blob.
-- [ ] Toggle off ⇒ no further writes, existing file untouched (hash check).
-- [ ] Status area reflects: NotEnabled, InSync, Pending, Error(message) — one test each.
-- [ ] All strings user-facing live in the Slint file; no Rust-side literals for UI copy.
+- [x] Toggle on + valid folder ⇒ config file shows `enabled: true`; first change produces a blob.
+- [x] Toggle off ⇒ no further writes, existing file untouched (hash check).
+- [x] Status area reflects: NotEnabled, InSync, Pending, Error(message) — one test each.
+- [x] All strings user-facing live in the Slint file; no Rust-side literals for UI copy.
 
 ### Task CS-4.2 — Status plumbing + copy review
 
@@ -32,5 +32,5 @@ The visible surface: a `Page::Sync` settings page with opt-in toggle, folder pic
 - Copy pass: state the blob is fully encrypted, what sync does/doesn't do, and that conflicts are never auto-resolved (mirrors ADR 0003).
 
 **Acceptance:**
-- [ ] Lock vault ⇒ status shows paused; unlock ⇒ resumes; a dirty change after unlock still syncs.
-- [ ] Copy review against REQUIREMENTS.md acceptance proof scenario, both machines.
+- [x] Lock vault ⇒ status shows paused; unlock ⇒ resumes; a dirty change after unlock still syncs.
+- [x] Copy review against REQUIREMENTS.md acceptance proof scenario, both machines.

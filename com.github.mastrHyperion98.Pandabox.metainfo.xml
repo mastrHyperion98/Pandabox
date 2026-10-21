@@ -17,6 +17,7 @@
       <li>Modern, responsive UI</li>
       <li>Secure password generation</li>
       <li>Import/Export functionality</li>
+      <li>Folder-based cloud sync (zero-knowledge encrypted blob)</li>
       <li>Cross-platform compatibility</li>
     </ul>
   </description>
@@ -35,6 +36,17 @@
   <developer_name>mastrHyperion98</developer_name>
   
   <releases>
+    <release version="0.3.0" date="2026-10-20">
+      <description>
+        <p>Cloud sync (folder-based)</p>
+        <ul>
+          <li>Optional zero-knowledge sync: the whole vault is sealed as a single encrypted pandabox.pbx file in any folder you choose (Nextcloud, OneDrive, Syncthing, USB stick, …)</li>
+          <li>File → Cloud Sync page: enable/disable, folder picker, live status, sync now</li>
+          <li>Restore a vault on a fresh machine from a folder + master password</li>
+          <li>Conflicts are detected and asked, never overwritten — the losing side is kept as a pandabox.pbx.conflict-… backup copy</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-10-19">
       <description>
         <p>Sortable table and menu fixes</p>
