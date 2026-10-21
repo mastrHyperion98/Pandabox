@@ -788,18 +788,34 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
     let ui_w = ui_weak.clone();
     let state = session_state.clone();
     ui.on_set_sync_enabled(move |enabled| {
+        let Some(ui) = ui_w.upgrade() else {
+            return SharedString::default();
+        };
+        // Use the folder shown in the UI (the picker updates it), not the
+        // folder from the persisted config.
         let result: Result<(), String> = if enabled {
-            match engine.config().folder() {
-                Some(f) => engine
-                    .set_config(SyncConfig::Enabled { folder: f.clone() })
-                    .map_err(|e| e.to_string()),
-                None => Err("Choose a sync folder first".to_owned()),
+            let folder = ui.get_sync_folder().as_str().to_owned();
+            if folder.trim().is_empty() {
+                Err("Choose a sync folder first".to_owned())
+            } else {
+                let folder_path = std::path::PathBuf::from(folder.trim());
+                if !folder_path.is_dir() {
+                    Err(format!(
+                        "Sync folder is not an existing directory: {}",
+                        folder.trim()
+                    ))
+                } else {
+                    engine
+                        .set_config(SyncConfig::Enabled { folder: folder_path })
+                        .map_err(|e| e.to_string())
+                }
             }
         } else {
             engine.set_config(SyncConfig::Disabled).map_err(|e| e.to_string())
         };
         match result {
             Ok(()) => {
+                ui.set_sync_enabled(enabled);
                 let msg = if enabled {
                     "Cloud sync enabled."
                 } else {
@@ -808,7 +824,12 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                 update_sync_status(&ui_w, &engine, &state);
                 SharedString::from(msg)
             }
-            Err(msg) => SharedString::from(msg),
+            Err(msg) => {
+                // Revert the checkbox so the UI and the config agree.
+                ui.set_sync_enabled(!enabled);
+                ui.set_sync_status_detail(SharedString::from(&msg));
+                SharedString::from(msg)
+            }
         }
     });
 
@@ -844,9 +865,18 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                 }
             }
             other => {
+                let mut flushed = false;
                 let detail = match other {
                     restore::SyncComparison::NoFile => {
-                        "No pandabox.pbx file in the sync folder yet.".to_owned()
+                        // No blob yet: "Sync now" writes the first one.
+                        engine.mark_dirty();
+                        match engine.flush(session) {
+                            Ok(()) => {
+                                flushed = true;
+                                "Vault written to the sync folder.".to_owned()
+                            }
+                            Err(e) => format!("Sync failed: {e}"),
+                        }
                     }
                     restore::SyncComparison::Undecodable => {
                         "The synced file could not be read with this vault's key.".to_owned()
@@ -858,6 +888,9 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
                     if !detail.is_empty() {
                         ui.set_sync_status_detail(SharedString::from(detail));
                     }
+                }
+                if flushed {
+                    update_sync_status(&ui_w, &engine, &state);
                 }
             }
         }
