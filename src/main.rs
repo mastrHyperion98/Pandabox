@@ -798,11 +798,17 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
             if folder.trim().is_empty() {
                 Err("Choose a sync folder first".to_owned())
             } else {
-                engine
-                    .set_config(SyncConfig::Enabled {
-                        folder: std::path::PathBuf::from(folder),
-                    })
-                    .map_err(|e| e.to_string())
+                let folder_path = std::path::PathBuf::from(folder.trim());
+                if !folder_path.is_dir() {
+                    Err(format!(
+                        "Sync folder is not an existing directory: {}",
+                        folder.trim()
+                    ))
+                } else {
+                    engine
+                        .set_config(SyncConfig::Enabled { folder: folder_path })
+                        .map_err(|e| e.to_string())
+                }
             }
         } else {
             engine.set_config(SyncConfig::Disabled).map_err(|e| e.to_string())
