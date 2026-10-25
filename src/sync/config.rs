@@ -1,11 +1,11 @@
 //! Sync configuration (docs/cloud-sync DESIGN D2, SCHEMA.md).
 //!
-//! Plaintext JSON at `~/.Pandabox/sync-config.json` holding only a
-//! directory path — no secrets. Missing or corrupt config means
-//! "sync disabled", never a hard error.
+//! Plaintext JSON at `<app data dir>/sync-config.json` (XDG-aware under
+//! Flatpak, see `crate::app_paths`) holding only a directory path — no
+//! secrets. Missing or corrupt config means "sync disabled", never a
+//! hard error.
 
 use serde::{Deserialize, Serialize};
-use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -37,13 +37,10 @@ impl SyncConfig {
         }
     }
 
-    /// Default config location: `<home>/Pandabox/sync-config.json`.
+    /// Default config location: `<app data dir>/sync-config.json`.
+    /// The data dir is XDG-aware under Flatpak (see `crate::app_paths`).
     pub fn default_path() -> PathBuf {
-        let home_dir = env::var("HOME")
-            .or_else(|_| env::var("USERPROFILE"))
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("."));
-        home_dir.join("Pandabox").join(CONFIG_FILE_NAME)
+        crate::app_paths::app_data_dir().join(CONFIG_FILE_NAME)
     }
 
     /// Load from the default location. Missing/corrupt/empty ⇒ Disabled.

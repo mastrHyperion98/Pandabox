@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use std::fs;
-use std::env;
 use diesel::sqlite::SqliteConnection;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use dotenvy::dotenv;
@@ -22,13 +21,8 @@ impl DatabaseManager {
     pub fn new() -> Self {
         dotenv().ok();
         
-        // Get the home directory and create the application directory
-        let home_dir = env::var("HOME")
-            .or_else(|_| env::var("USERPROFILE"))
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("."));
-            
-        let app_dir = home_dir.join("Pandabox");
+        // Get the application data directory (XDG-aware under Flatpak)
+        let app_dir = crate::app_paths::app_data_dir();
         fs::create_dir_all(&app_dir).expect("Failed to create application directory");
         
         Self::with_path(app_dir.join("pandabox.db"))
