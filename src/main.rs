@@ -20,6 +20,7 @@ use serde::{Serialize, Deserialize};
 use rfd::FileDialog;
 use log::{error, warn, info};
 
+mod app_paths;
 mod database;
 mod encrypt;
 mod session;
