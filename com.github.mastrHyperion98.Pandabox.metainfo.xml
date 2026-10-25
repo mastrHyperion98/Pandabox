@@ -47,6 +47,16 @@
         </ul>
       </description>
     </release>
+    <release version="0.2.1" date="2026-10-24">
+      <description>
+        <p>Restore fixes</p>
+        <ul>
+          <li>Restore from a folder is now reachable — the Cloud Sync page is compact and the folder field has a Browse button</li>
+          <li>Accepts a pandabox.pbx file path or the containing folder (case-insensitive)</li>
+          <li>Visible master-password field for restore; clearer status errors</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-10-19">
       <description>
         <p>Sortable table and menu fixes</p>

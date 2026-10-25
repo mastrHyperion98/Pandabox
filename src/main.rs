@@ -921,29 +921,49 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
     let ui_w = ui_weak.clone();
     let state = session_state.clone();
     let manager_for_restore = manager_for_sync.clone();
-    ui.on_restore_vault(move |password: SharedString| {
+    ui.on_restore_vault(move |folder: SharedString, password: SharedString| {
+        // The password goes into a Zeroizing buffer on the first
+        // line: shadowing releases this Rust-side copy of the Slint
+        // SharedString as early as possible, and the buffer is
+        // wiped when the closure ends. (Slint's own copy of the
+        // password text stays in its widget internals — Slint has
+        // no zeroize support — so the Rust-side buffer is the last
+        // copy this code controls.)
+        let password = Zeroizing::new(password.as_bytes().to_vec());
         let Some(ui) = ui_w.upgrade() else {
             return;
         };
-        let folder = ui.get_sync_restore_folder().as_str().to_owned();
-        if folder.trim().is_empty() {
+        // The password string itself is fully checked here
+        // (encoding + non-empty) before any filesystem access, so a
+        // blank or invalid password never produces folder-specific
+        // feedback. Cryptographic (AEAD) validation of the password
+        // necessarily happens later, in open_blob_with_password, once
+        // the vault file has been read — inherent to any restore.
+        let pw: &str = match std::str::from_utf8(&password) {
+            Ok(pw) => pw,
+            Err(_) => {
+                ui.set_sync_status_detail(SharedString::from(
+                    "Invalid password encoding; restore aborted.",
+                ));
+                return;
+            }
+        };
+        if pw.trim().is_empty() {
             ui.set_sync_status_detail(SharedString::from(
-                "Enter the path of a folder containing a pandabox.pbx file.",
+                "Enter the master password for that vault.",
             ));
             return;
         }
-        let folder_path = std::path::PathBuf::from(folder);
-        // The password lives in a Zeroizing buffer for the duration of
-        // the restore and is wiped when the closure body ends.
-        let pw_bytes = Zeroizing::new(password.as_bytes().to_vec());
-        let pw: &str = match std::str::from_utf8(&pw_bytes) {
-            Ok(pw) => pw,
-            Err(_) => {
-                if let Some(ui) = ui_w.upgrade() {
-                    ui.set_sync_status_detail(SharedString::from(
-                        "Invalid password encoding; restore aborted.",
-                    ));
-                }
+        let mut folder = folder.as_str().trim().to_owned();
+        if folder.is_empty() {
+            folder = ui.get_sync_folder().as_str().trim().to_owned();
+        }
+        // Folder errors are a typed enum; only fixed generic messages
+        // reach the UI, never a path or OS detail.
+        let folder_path = match restore::resolve_restore_folder(&folder) {
+            Ok(path) => path,
+            Err(e) => {
+                ui.set_sync_status_detail(SharedString::from(e.to_string()));
                 return;
             }
         };
