@@ -13,12 +13,23 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 /// The directory holding the vault database and `sync-config.json`.
+///
+/// Flatpak is detected by the `FLATPAK_ID` env var **and** the presence of
+/// the read-only `/app` prefix that the sandbox mounts. Requiring both means
+/// merely setting `FLATPAK_ID` in a native build cannot redirect vault data
+/// to a different location.
 pub fn app_data_dir() -> PathBuf {
-    if env::var("FLATPAK_ID").is_ok() {
+    if is_flatpak() {
         flatpak_data_dir(env::var("XDG_DATA_HOME").ok().as_deref(), &home_base())
     } else {
         home_base().join("Pandabox")
     }
+}
+
+/// Inside a Flatpak sandbox? `FLATPAK_ID` is set by the runtime and `/app`
+/// is the read-only mount prefix for the app's own files.
+fn is_flatpak() -> bool {
+    env::var("FLATPAK_ID").is_ok() && std::path::Path::new("/app").is_dir()
 }
 
 /// Data dir inside a Flatpak: `$XDG_DATA_HOME/pandabox`, or
@@ -35,7 +46,11 @@ fn home_base() -> PathBuf {
     env::var("HOME")
         .or_else(|_| env::var("USERPROFILE"))
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."))
+        .unwrap_or_else(|_| {
+            // No home dir resolvable — never fall back to the CWD, which
+            // could write the vault to an arbitrary location.
+            panic!("cannot resolve home directory (HOME/USERPROFILE unset); refusing to write vault data")
+        })
 }
 
 #[cfg(test)]
