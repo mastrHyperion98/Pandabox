@@ -942,10 +942,11 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
             ));
             return;
         }
-        // The password lives in a Zeroizing buffer for the duration of
-        // the restore and is wiped when the closure body ends.
-        let pw_bytes = Zeroizing::new(password.as_bytes().to_vec());
-        let pw: &str = match std::str::from_utf8(&pw_bytes) {
+        // The password becomes a Zeroizing buffer immediately: shadowing
+        // releases the original Slint SharedString as early as possible,
+        // and the buffer is wiped when the closure body ends.
+        let password = Zeroizing::new(password.as_bytes().to_vec());
+        let pw: &str = match std::str::from_utf8(&password) {
             Ok(pw) => pw,
             Err(_) => {
                 if let Some(ui) = ui_w.upgrade() {

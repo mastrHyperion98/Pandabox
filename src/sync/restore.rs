@@ -29,7 +29,8 @@ pub struct RestoredVault {
 #[derive(Debug)]
 pub enum RestoreError {
     NoVaultFile,
-    Io(String),
+    /// Filesystem failure; the OS detail is logged, not surfaced.
+    Io,
     Decoding,
     Import(VaultImportError),
 }
@@ -38,7 +39,7 @@ impl std::fmt::Display for RestoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NoVaultFile => write!(f, "No vault file found in the folder"),
-            Self::Io(detail) => write!(f, "Could not read the vault file: {detail}"),
+            Self::Io => write!(f, "Could not read the vault file"),
             Self::Decoding => write!(f, "Vault file could not be decrypted"),
             Self::Import(e) => write!(f, "{e}"),
         }
@@ -70,10 +71,9 @@ pub fn resolve_restore_folder(raw: &str) -> Result<std::path::PathBuf, String> {
             .map(|n| n.to_string_lossy().eq_ignore_ascii_case(BLOB_FILE_NAME))
             .unwrap_or(false);
         if !is_blob {
-            return Err(format!(
-                "Expected a folder or a pandabox.pbx file, not {}",
-                path.display()
-            ));
+            return Err(
+                "Expected a folder or a pandabox.pbx file.".to_owned(),
+            );
         }
         path = path
             .parent()
@@ -81,10 +81,10 @@ pub fn resolve_restore_folder(raw: &str) -> Result<std::path::PathBuf, String> {
             .ok_or_else(|| "Could not use the parent folder of that file.".to_owned())?;
     }
     if !path.exists() {
-        return Err(format!("Path not found: {}", path.display()));
+        return Err("Path not found.".to_owned());
     }
     if !path.is_dir() {
-        return Err(format!("Not a folder: {}", path.display()));
+        return Err("Not a folder.".to_owned());
     }
     locate_blob(&path).map(|_| path).map_err(|e| e.to_string())
 }
@@ -97,7 +97,10 @@ fn locate_blob(folder: &Path) -> Result<std::path::PathBuf, RestoreError> {
     let entries = match fs::read_dir(folder) {
         Ok(entries) => entries,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(RestoreError::NoVaultFile),
-        Err(e) => return Err(RestoreError::Io(e.to_string())),
+        Err(e) => {
+            log::error!("restore: reading the sync folder failed: {e}");
+            return Err(RestoreError::Io);
+        }
     };
     for entry in entries.flatten() {
         if entry
@@ -121,7 +124,10 @@ pub fn restore_from_folder_with_password(
     let bytes = match fs::read(&file) {
         Ok(b) => b,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(RestoreError::NoVaultFile),
-        Err(e) => return Err(RestoreError::Io(e.to_string())),
+        Err(e) => {
+            log::error!("restore: reading the vault file failed: {e}");
+            return Err(RestoreError::Io);
+        }
     };
     let (json, engine) =
         blob::open_blob_with_password(&bytes, password).map_err(|_| RestoreError::Decoding)?;
