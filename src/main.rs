@@ -921,18 +921,27 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
     let ui_w = ui_weak.clone();
     let state = session_state.clone();
     let manager_for_restore = manager_for_sync.clone();
-    ui.on_restore_vault(move |password: SharedString| {
+    ui.on_restore_vault(move |folder: SharedString, password: SharedString| {
         let Some(ui) = ui_w.upgrade() else {
             return;
         };
-        let folder = ui.get_sync_restore_folder().as_str().to_owned();
-        if folder.trim().is_empty() {
+        let mut folder = folder.as_str().trim().to_owned();
+        if folder.is_empty() {
+            folder = ui.get_sync_folder().as_str().trim().to_owned();
+        }
+        let folder_path = match restore::resolve_restore_folder(&folder) {
+            Ok(path) => path,
+            Err(e) => {
+                ui.set_sync_status_detail(SharedString::from(e));
+                return;
+            }
+        };
+        if password.trim().is_empty() {
             ui.set_sync_status_detail(SharedString::from(
-                "Enter the path of a folder containing a pandabox.pbx file.",
+                "Enter the master password for that vault.",
             ));
             return;
         }
-        let folder_path = std::path::PathBuf::from(folder);
         // The password lives in a Zeroizing buffer for the duration of
         // the restore and is wiped when the closure body ends.
         let pw_bytes = Zeroizing::new(password.as_bytes().to_vec());

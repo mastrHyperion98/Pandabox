@@ -1,4 +1,4 @@
-import { Button, CheckBox, Palette } from "std-widgets.slint";
+import { Button, CheckBox, LineEdit, Palette } from "std-widgets.slint";
 
 export component SyncView inherits Rectangle {
     // Driven by Rust
@@ -16,134 +16,146 @@ export component SyncView inherits Rectangle {
     callback conflict_import();
     callback conflict_keep();
     callback conflict_cancel();
-    callback restore_vault(string);
+    // folder path, then master password. The path is passed directly so
+    // restore does not depend on a property binding flushing first.
+    callback restore_vault(string, string);
     callback sync_back();
 
     in-out property <string> restore-folder: "";
 
     background: Palette.background;
 
-    // Fills the window; the content column below is centered both
-    // vertically (outer VerticalLayout) and horizontally (HorizontalLayout)
-    // and scales with the window up to a 760px reading width.
+    // Compact column that fits the default window. The restore controls
+    // are in this column (not below a clipped edge) and have an explicit
+    // width so the path field cannot collapse to nothing.
     VerticalLayout {
-        padding: 24px;
-        alignment: center;
+        padding: 16px;
+        alignment: start;
 
         HorizontalLayout {
             alignment: center;
 
-            content := VerticalLayout {
-                width: min(root.width - 48px, 760px);
-                spacing: 12px;
-
-            Text {
-                text: "Cloud Sync";
-                font-size: 22px;
-                font-weight: 600;
-            }
-            Text {
-                text: "Back up your vault to a folder you choose (for example a Google Drive, Dropbox or Nextcloud sync folder). The file written there (pandabox.pbx) is fully encrypted — the provider only ever sees ciphertext. Disabling sync never deletes the file.";
-                font-size: 13px;
-                color: Palette.alternate-foreground;
-            }
-
-            Rectangle { height: 1px; background: Palette.border; }
-
-            Text { text: "Sync folder"; font-size: 14px; }
-            HorizontalLayout {
-                spacing: 8px;
-                Text {
-                    text: root.folder == "" ? "No folder selected" : root.folder;
-                    font-size: 13px;
-                    vertical-alignment: center;
-                }
-                choose-btn := Button {
-                    text: "Choose folder…";
-                    clicked => { let path = root.choose_folder(); if path != "" { root.folder = path; } }
-                }
-            }
-
-            Text { text: "Status"; font-size: 14px; }
             VerticalLayout {
-                spacing: 4px;
-                Text { text: root.status-state; font-size: 13px; font-weight: 600; }
-                if root.status-detail != "": Text {
-                    text: root.status-detail;
+                width: min(root.width - 32px, 760px);
+                spacing: 8px;
+
+                Text {
+                    text: "Cloud Sync";
+                    font-size: 22px;
+                    font-weight: 600;
+                }
+                Text {
+                    text: "Back up to a folder you choose (Google Drive, Dropbox, a network drive). The file written there (pandabox.pbx) is fully encrypted.";
+                    font-size: 13px;
+                    color: Palette.alternate-foreground;
+                    wrap: word-wrap;
+                }
+
+                Rectangle { height: 1px; background: Palette.border; }
+
+                Text { text: "Sync folder"; font-size: 14px; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: root.folder == "" ? "No folder selected" : root.folder;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                    }
+                    choose-btn := Button {
+                        text: "Choose folder…";
+                        clicked => {
+                            let path = root.choose_folder();
+                            if path != "" { root.folder = path; }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: root.status-state; font-size: 13px; font-weight: 600; vertical-alignment: center; }
+                    if root.status-detail != "": Text {
+                        text: root.status-detail;
+                        font-size: 12px;
+                        color: Palette.alternate-foreground;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    enable-check := CheckBox {
+                        text: "Enable automatic sync";
+                        checked <=> root.sync-enabled;
+                        toggled => {
+                            let msg = root.set_sync_enabled(self.checked);
+                            if msg != "" { root.status-detail = msg; }
+                        }
+                    }
+                    sync-btn := Button {
+                        text: "Sync now";
+                        enabled: root.sync-enabled;
+                        clicked => { root.sync_now(); }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Palette.border; }
+
+                Text { text: "Restore from a folder"; font-size: 14px; font-weight: 600; }
+                Text {
+                    text: "Browse to the folder that contains pandabox.pbx (or type its path), then enter that vault's master password.";
                     font-size: 12px;
                     color: Palette.alternate-foreground;
+                    wrap: word-wrap;
                 }
-            }
-
-            Text { text: "Actions"; font-size: 14px; }
-            HorizontalLayout {
-                spacing: 8px;
-                sync-btn := Button {
-                    text: "Sync now";
-                    enabled: root.sync-enabled;
-                    clicked => { root.sync_now(); }
+                Text { text: "Folder"; font-size: 12px; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    restore-folder-input := LineEdit {
+                        horizontal-stretch: 1;
+                        min-width: 280px;
+                        text <=> root.restore-folder;
+                        placeholder-text: "Z:\\PasswordsManagement\\Sync";
+                    }
+                    browse-restore := Button {
+                        text: "Browse…";
+                        clicked => {
+                            let path = root.choose_folder();
+                            if path != "" { root.restore-folder = path; }
+                        }
+                    }
                 }
-                Rectangle { } // spacer
-            }
-
-            Rectangle { height: 1px; background: Palette.border; }
-
-            Text { text: "Enable automatic sync"; font-size: 14px; }
-            Text {
-                text: "While your vault is unlocked, changes are written to the sync folder automatically (debounced). A pending write is flushed when the app closes.";
-                font-size: 12px;
-                color: Palette.alternate-foreground;
-            }
-            enable-check := CheckBox {
-                text: "Enable cloud sync";
-                checked <=> root.sync-enabled;
-                toggled => {
-                    let msg = root.set_sync_enabled(self.checked);
-                    if msg != "" { root.status-detail = msg; }
+                Text { text: "Master password"; font-size: 12px; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    restore-pw := LineEdit {
+                        horizontal-stretch: 1;
+                        min-width: 220px;
+                        placeholder-text: "Master password";
+                        input-type: InputType.password;
+                    }
+                    restore-btn := Button {
+                        text: "Restore vault";
+                        clicked => {
+                            // Fall back to the sync folder if the restore box is empty.
+                            if root.restore-folder == "" { root.restore-folder = root.folder; }
+                            let pw = restore-pw.text;
+                            root.restore_vault(root.restore-folder, pw);
+                            restore-pw.text = "";
+                        }
+                    }
                 }
-            }
 
-            Rectangle { height: 1px; background: Palette.border; }
+                Rectangle { height: 1px; background: Palette.border; }
 
-            Text { text: "Restore from a folder"; font-size: 14px; }
-            Text {
-                text: "On a new machine, point Pandabox at a folder containing a pandabox.pbx file and enter its master password to restore your vault. If the file differs from your local vault, you will be asked what to do — nothing is ever overwritten silently.";
-                font-size: 12px;
-                color: Palette.alternate-foreground;
-            }
-            HorizontalLayout {
-                spacing: 8px;
-                restore-folder-input := TextInput {
-                    height: 32px;
-                    vertical-alignment: center;
-                    font-size: 13px;
-                }
-                restore-pw := TextInput {
-                    height: 32px;
-                    width: 180px;
-                    vertical-alignment: center;
-                    font-size: 13px;
-                }
-                restore-btn := Button {
-                    text: "Restore vault…";
-                    clicked => {
-                        root.restore-folder = restore-folder-input.text;
-                        let pw = restore-pw.text;
-                        root.restore_vault(pw);
-                        restore-pw.text = "";
+                HorizontalLayout {
+                    back-btn := Button {
+                        text: "Back to vault";
+                        clicked => { root.sync_back(); }
                     }
                 }
             }
-
-            Rectangle { height: 1px; background: Palette.border; }
-
-            HorizontalLayout {
-                back-btn := Button {
-                    text: "Back to vault";
-                    clicked => { root.sync_back(); }
-                }
-            }
-        }
         }
     }
 
@@ -157,37 +169,46 @@ export component SyncView inherits Rectangle {
                 width: 560px;
                 spacing: 12px;
                 padding: 24px;
+                alignment: center;
                 Rectangle {
-                    width: 1px;
-                }
-                Text {
-                    text: "Your vault and the synced file have diverged";
-                    font-size: 18px;
-                    font-weight: 600;
-                }
-                Text {
-                    text: root.conflict-detail;
-                    font-size: 13px;
-                    color: Palette.alternate-foreground;
-                }
-                Text {
-                    text: "Whichever you choose, the other side is kept as a backup copy (pandabox.pbx.conflict-…). Nothing is deleted.";
-                    font-size: 12px;
-                    color: Palette.alternate-foreground;
-                }
-                HorizontalLayout {
-                    spacing: 8px;
-                    import-btn := Button {
-                        text: "Import this file";
-                        clicked => { root.conflict_import(); }
-                    }
-                    keep-btn := Button {
-                        text: "Keep my local vault";
-                        clicked => { root.conflict_keep(); }
-                    }
-                    cancel-btn := Button {
-                        text: "Cancel";
-                        clicked => { root.conflict_cancel(); }
+                    background: Palette.background;
+                    border-radius: 6px;
+                    VerticalLayout {
+                        padding: 16px;
+                        spacing: 12px;
+                        Text {
+                            text: "Your vault and the synced file have diverged";
+                            font-size: 18px;
+                            font-weight: 600;
+                            wrap: word-wrap;
+                        }
+                        Text {
+                            text: root.conflict-detail;
+                            font-size: 13px;
+                            color: Palette.alternate-foreground;
+                            wrap: word-wrap;
+                        }
+                        Text {
+                            text: "Whichever you choose, the other side is kept as a backup copy (pandabox.pbx.conflict-…). Nothing is deleted.";
+                            font-size: 12px;
+                            color: Palette.alternate-foreground;
+                            wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            import-btn := Button {
+                                text: "Import this file";
+                                clicked => { root.conflict_import(); }
+                            }
+                            keep-btn := Button {
+                                text: "Keep my local vault";
+                                clicked => { root.conflict_keep(); }
+                            }
+                            cancel-btn := Button {
+                                text: "Cancel";
+                                clicked => { root.conflict_cancel(); }
+                            }
+                        }
                     }
                 }
             }

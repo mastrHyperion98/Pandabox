@@ -52,12 +52,72 @@ impl std::error::Error for RestoreError {}
 /// The master password is validated against the blob's public salt
 /// (AEAD authentication); only after the vault authenticates and
 /// parses does it replace the local database.
+/// Turn a user-entered path into the folder that holds `pandabox.pbx`.
+///
+/// Accepts a folder, or the `.pbx` file itself. Trims quotes and
+/// whitespace. Matching the file name is case-insensitive so a network
+/// share that reports `Pandabox.PBX` still restores.
+pub fn resolve_restore_folder(raw: &str) -> Result<std::path::PathBuf, String> {
+    let trimmed = raw.trim().trim_matches(|c| c == '"' || c == '\'');
+    let trimmed = trimmed.trim();
+    if trimmed.is_empty() {
+        return Err("Choose a folder that contains pandabox.pbx.".to_owned());
+    }
+    let mut path = std::path::PathBuf::from(trimmed);
+    if path.is_file() {
+        let is_blob = path
+            .file_name()
+            .map(|n| n.to_string_lossy().eq_ignore_ascii_case(BLOB_FILE_NAME))
+            .unwrap_or(false);
+        if !is_blob {
+            return Err(format!(
+                "Expected a folder or a pandabox.pbx file, not {}",
+                path.display()
+            ));
+        }
+        path = path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .ok_or_else(|| "Could not use the parent folder of that file.".to_owned())?;
+    }
+    if !path.exists() {
+        return Err(format!("Path not found: {}", path.display()));
+    }
+    if !path.is_dir() {
+        return Err(format!("Not a folder: {}", path.display()));
+    }
+    locate_blob(&path).map(|_| path).map_err(|e| e.to_string())
+}
+
+fn locate_blob(folder: &Path) -> Result<std::path::PathBuf, RestoreError> {
+    let direct = folder.join(BLOB_FILE_NAME);
+    if direct.is_file() {
+        return Ok(direct);
+    }
+    let entries = match fs::read_dir(folder) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(RestoreError::NoVaultFile),
+        Err(e) => return Err(RestoreError::Io(e.to_string())),
+    };
+    for entry in entries.flatten() {
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(BLOB_FILE_NAME)
+            && entry.path().is_file()
+        {
+            return Ok(entry.path());
+        }
+    }
+    Err(RestoreError::NoVaultFile)
+}
+
 pub fn restore_from_folder_with_password(
     folder: &Path,
     password: &str,
     manager: &DatabaseManager,
 ) -> Result<RestoredVault, RestoreError> {
-    let file = folder.join(BLOB_FILE_NAME);
+    let file = locate_blob(folder)?;
     let bytes = match fs::read(&file) {
         Ok(b) => b,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(RestoreError::NoVaultFile),
