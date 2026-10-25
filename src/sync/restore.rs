@@ -53,16 +53,50 @@ impl std::error::Error for RestoreError {}
 /// The master password is validated against the blob's public salt
 /// (AEAD authentication); only after the vault authenticates and
 /// parses does it replace the local database.
+///
+/// `password` is borrowed, not cloned: pass a slice of a
+/// `Zeroizing` buffer (as `main.rs` does) so the plaintext is wiped
+/// when that buffer drops. Nothing here extends its lifetime.
+/// Why a user-entered restore path can't be used. Variants are typed
+/// (not `String`) so the UI can only ever show these fixed, generic
+/// messages — never a filesystem path or OS detail.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ResolveFolderError {
+    Empty,
+    WrongFile,
+    NoParent,
+    NotFound,
+    NotADir,
+    NoVaultFile,
+    Io,
+}
+
+impl std::fmt::Display for ResolveFolderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => write!(f, "Choose a folder that contains pandabox.pbx."),
+            Self::WrongFile => write!(f, "Expected a folder or a pandabox.pbx file."),
+            Self::NoParent => write!(f, "Could not use the parent folder of that file."),
+            Self::NotFound => write!(f, "The folder you chose could not be found."),
+            Self::NotADir => write!(f, "The path you chose is not a folder."),
+            Self::NoVaultFile => write!(f, "No vault file found in the folder"),
+            Self::Io => write!(f, "Could not read the folder"),
+        }
+    }
+}
+
+impl std::error::Error for ResolveFolderError {}
+
 /// Turn a user-entered path into the folder that holds `pandabox.pbx`.
 ///
 /// Accepts a folder, or the `.pbx` file itself. Trims quotes and
 /// whitespace. Matching the file name is case-insensitive so a network
 /// share that reports `Pandabox.PBX` still restores.
-pub fn resolve_restore_folder(raw: &str) -> Result<std::path::PathBuf, String> {
+pub fn resolve_restore_folder(raw: &str) -> Result<std::path::PathBuf, ResolveFolderError> {
     let trimmed = raw.trim().trim_matches(|c| c == '"' || c == '\'');
     let trimmed = trimmed.trim();
     if trimmed.is_empty() {
-        return Err("Choose a folder that contains pandabox.pbx.".to_owned());
+        return Err(ResolveFolderError::Empty);
     }
     let mut path = std::path::PathBuf::from(trimmed);
     if path.is_file() {
@@ -71,22 +105,26 @@ pub fn resolve_restore_folder(raw: &str) -> Result<std::path::PathBuf, String> {
             .map(|n| n.to_string_lossy().eq_ignore_ascii_case(BLOB_FILE_NAME))
             .unwrap_or(false);
         if !is_blob {
-            return Err(
-                "Expected a folder or a pandabox.pbx file.".to_owned(),
-            );
+            return Err(ResolveFolderError::WrongFile);
         }
         path = path
             .parent()
             .map(|p| p.to_path_buf())
-            .ok_or_else(|| "Could not use the parent folder of that file.".to_owned())?;
+            .ok_or(ResolveFolderError::NoParent)?;
     }
     if !path.exists() {
-        return Err("Path not found.".to_owned());
+        return Err(ResolveFolderError::NotFound);
     }
     if !path.is_dir() {
-        return Err("Not a folder.".to_owned());
+        return Err(ResolveFolderError::NotADir);
     }
-    locate_blob(&path).map(|_| path).map_err(|e| e.to_string())
+    locate_blob(&path)
+        .map(|_| path)
+        .map_err(|e| match e {
+            RestoreError::NoVaultFile => ResolveFolderError::NoVaultFile,
+            RestoreError::Io => ResolveFolderError::Io,
+            _ => ResolveFolderError::Io,
+        })
 }
 
 fn locate_blob(folder: &Path) -> Result<std::path::PathBuf, RestoreError> {

@@ -922,38 +922,40 @@ fn get_initial_ui(db_exist: bool, manager: Rc<DatabaseManager>) -> Result<(), Bo
     let state = session_state.clone();
     let manager_for_restore = manager_for_sync.clone();
     ui.on_restore_vault(move |folder: SharedString, password: SharedString| {
+        // The password goes into a Zeroizing buffer on the first line:
+        // shadowing releases the Slint SharedString as early as
+        // possible, and the buffer is wiped when the closure ends.
+        let password = Zeroizing::new(password.as_bytes().to_vec());
         let Some(ui) = ui_w.upgrade() else {
             return;
         };
-        let mut folder = folder.as_str().trim().to_owned();
-        if folder.is_empty() {
-            folder = ui.get_sync_folder().as_str().trim().to_owned();
-        }
-        let folder_path = match restore::resolve_restore_folder(&folder) {
-            Ok(path) => path,
-            Err(e) => {
-                ui.set_sync_status_detail(SharedString::from(e));
+        // The password is validated before any filesystem probe, so a
+        // blank or bad password never produces folder-specific feedback.
+        let pw: &str = match std::str::from_utf8(&password) {
+            Ok(pw) => pw,
+            Err(_) => {
+                ui.set_sync_status_detail(SharedString::from(
+                    "Invalid password encoding; restore aborted.",
+                ));
                 return;
             }
         };
-        if password.trim().is_empty() {
+        if pw.trim().is_empty() {
             ui.set_sync_status_detail(SharedString::from(
                 "Enter the master password for that vault.",
             ));
             return;
         }
-        // The password becomes a Zeroizing buffer immediately: shadowing
-        // releases the original Slint SharedString as early as possible,
-        // and the buffer is wiped when the closure body ends.
-        let password = Zeroizing::new(password.as_bytes().to_vec());
-        let pw: &str = match std::str::from_utf8(&password) {
-            Ok(pw) => pw,
-            Err(_) => {
-                if let Some(ui) = ui_w.upgrade() {
-                    ui.set_sync_status_detail(SharedString::from(
-                        "Invalid password encoding; restore aborted.",
-                    ));
-                }
+        let mut folder = folder.as_str().trim().to_owned();
+        if folder.is_empty() {
+            folder = ui.get_sync_folder().as_str().trim().to_owned();
+        }
+        // Folder errors are a typed enum; only fixed generic messages
+        // reach the UI, never a path or OS detail.
+        let folder_path = match restore::resolve_restore_folder(&folder) {
+            Ok(path) => path,
+            Err(e) => {
+                ui.set_sync_status_detail(SharedString::from(e.to_string()));
                 return;
             }
         };
